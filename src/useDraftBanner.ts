@@ -46,6 +46,15 @@ export function useDraftBanner(options: UseDraftBannerOptions): UseDraftBannerRe
   const { savedAt, autoHideMs = 5000, locale = 'en' } = options;
   const [visible, setVisible] = useState(Boolean(savedAt));
 
+  // Gate Date.now()-derived output behind a post-mount flag to avoid SSR/client
+  // hydration mismatch. On the server `relativeTime` is null; the first client
+  // render also returns null (matching the server); the second render (after
+  // mount) computes the real value.
+  const [isClient, setIsClient] = useState(false);
+  useEffect(() => {
+    setIsClient(true);
+  }, []);
+
   useEffect(() => {
     setVisible(Boolean(savedAt));
   }, [savedAt]);
@@ -58,7 +67,7 @@ export function useDraftBanner(options: UseDraftBannerOptions): UseDraftBannerRe
 
   const dismiss = useCallback(() => setVisible(false), []);
 
-  const relativeTime = savedAt ? formatRelative(savedAt, Date.now(), locale) : null;
+  const relativeTime = isClient && savedAt ? formatRelative(savedAt, Date.now(), locale) : null;
 
   return { visible, dismiss, relativeTime };
 }

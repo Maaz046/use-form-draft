@@ -1,3 +1,4 @@
+import { StrictMode } from 'react';
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
 import { renderHook, act } from '@testing-library/react';
 import { useFormDraft } from './useFormDraft';
@@ -141,11 +142,24 @@ describe('useFormDraft', () => {
         useFormDraft('test:key', state, hydrate, { exclude: ['password'] }),
       { initialProps: { state: { name: 'jane', password: 'initial' } } },
     );
-    rerender({ state: { name: 'jane', password: 'secret' } });
+    // Change a non-excluded field so a write actually fires.
+    rerender({ state: { name: 'jane updated', password: 'secret' } });
     act(() => { vi.advanceTimersByTime(400); });
     const stored = JSON.parse(localStorage.getItem('test:key')!);
-    expect(stored.state).toEqual({ name: 'jane' });
+    expect(stored.state).toEqual({ name: 'jane updated' });
     expect(stored.state.password).toBeUndefined();
+  });
+
+  it('does not write when only excluded fields change', () => {
+    const hydrate = vi.fn();
+    const { rerender } = renderHook(
+      ({ state }: { state: { name: string; password: string } }) =>
+        useFormDraft('test:key', state, hydrate, { exclude: ['password'] }),
+      { initialProps: { state: { name: 'jane', password: 'initial' } } },
+    );
+    rerender({ state: { name: 'jane', password: 'updated-secret' } });
+    act(() => { vi.advanceTimersByTime(400); });
+    expect(localStorage.getItem('test:key')).toBeNull();
   });
 
   it('persists hasFile flag when option is true', () => {
@@ -211,6 +225,44 @@ describe('useFormDraft', () => {
     const b = JSON.parse(localStorage.getItem('test:B')!);
     expect(a.state).toEqual({ x: 1 });
     expect(b.state).toEqual({ y: 9 });
+  });
+
+  it('does not write the initial state under React 18 StrictMode (double-mount)', () => {
+    const hydrate = vi.fn();
+    renderHook(
+      () => useFormDraft('test:strict', { name: 'initial', count: 0 }, hydrate),
+      { wrapper: StrictMode },
+    );
+    act(() => { vi.advanceTimersByTime(800); });
+    expect(localStorage.getItem('test:strict')).toBeNull();
+  });
+
+  it('does not write when re-rendered with a new object reference but identical content', () => {
+    // Mimics react-hook-form's form.watch() returning a fresh snapshot every render.
+    const hydrate = vi.fn();
+    const { rerender } = renderHook(
+      ({ state }: { state: { name: string } }) =>
+        useFormDraft('test:no-op', state, hydrate),
+      { initialProps: { state: { name: 'jane' } } },
+    );
+    rerender({ state: { name: 'jane' } });
+    rerender({ state: { name: 'jane' } });
+    rerender({ state: { name: 'jane' } });
+    act(() => { vi.advanceTimersByTime(800); });
+    expect(localStorage.getItem('test:no-op')).toBeNull();
+  });
+
+  it('still writes on real state changes after StrictMode mount', () => {
+    const hydrate = vi.fn();
+    const { rerender } = renderHook(
+      ({ state }: { state: { name: string } }) =>
+        useFormDraft('test:strict-change', state, hydrate),
+      { initialProps: { state: { name: 'initial' } }, wrapper: StrictMode },
+    );
+    rerender({ state: { name: 'edited' } });
+    act(() => { vi.advanceTimersByTime(400); });
+    const stored = JSON.parse(localStorage.getItem('test:strict-change')!);
+    expect(stored.state).toEqual({ name: 'edited' });
   });
 
   it('does not throw when localStorage is unavailable', () => {

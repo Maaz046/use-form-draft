@@ -3,9 +3,10 @@
 Auto-save React form drafts to `localStorage` and restore them on mount, with an opt-in recovery banner.
 Works with plain `useState`, React Hook Form, Formik — anything that has a state value and a setter.
 
-- ~4 KB ESM core, zero runtime dependencies beyond React
+- ~2 KB min+gzip core (RHF adapter +235 B), zero runtime dependencies beyond React
 - Bring your own form library (or none)
 - TTL, schema-version invalidation, sensitive-field exclusion built in
+- React 18 StrictMode & SSR safe — verified by tests, not just guards
 - Optional themable banner + a headless hook if you want to roll your own UI
 - React Hook Form adapter shipped under `use-form-draft/rhf`
 
@@ -200,28 +201,40 @@ These keys are stripped before the write. They never touch `localStorage`.
 - `localStorage` unavailable (private browsing, quota exceeded, disabled by user): silent no-ops
 - Corrupted JSON in storage: discarded
 - Hydrate callback throws: draft discarded so a re-mount doesn't keep crashing
-- SSR (Next.js, Remix): guarded — no `localStorage` reads on the server
-- Rapid input: writes are debounced; the trailing call is the one that lands
+- **React 18 StrictMode**: the hook does not write the initial state on its intentional double-mount (covered by a dedicated test)
+- **SSR (Next.js, Remix)**: covered by a `react-dom/server` test. `useFormDraft` renders without throwing; `DraftBanner` returns null on the server to avoid hydration mismatch; `useDraftBanner` returns `relativeTime: null` until after mount.
+- Rapid input: writes are debounced
+- **Identity-only re-renders**: if `state` is a new object reference each render but its JSON-persistable shape is unchanged (the React Hook Form `form.watch()` pattern), no write happens. Writes only fire when the persisted JSON actually differs.
+
+## Same-key behavior
+
+If two components mount with the same `key` concurrently, writes race and last-write wins. This
+is by design for v0.1 — the typical pattern (one form open at a time per key) is safe.
+Cross-instance and cross-tab coordination via `BroadcastChannel` / `storage` events is on the
+v0.1.1 roadmap.
 
 ## How this compares
 
-There are several form-persistence libraries in the React ecosystem. This is an honest sketch — pick the
-one that fits, none is universally right.
+There are several form-persistence libraries in the React ecosystem. This is an honest sketch
+— last-release dates and feature columns audited against `npm view <pkg>` and each package's
+README. Pick the one that fits; none is universally right.
 
-| Package | Form-library-agnostic | Bundled recovery UI | Server-autosave | Storage backend | Status |
+| Package | Form-lib-agnostic | Bundled recovery UI | Server-autosave | Storage | Last release |
 |---|:-:|:-:|:-:|---|---|
-| **use-form-draft** | ✅ | ✅ banner + headless hook | ❌ | localStorage | New (this one) |
-| `react-hook-form-persist` | ❌ RHF only | ❌ | ❌ | localStorage / sessionStorage | Unmaintained since 2022 |
-| `react-hook-form-autosave` | ❌ RHF only | ❌ | ✅ | server | Active |
-| `@ryanflorence/persist-form` | ✅ vanilla HTML form | ❌ | ❌ | localStorage | Active |
-| `@zippers/savior` | ✅ | partial | ❌ | localStorage | Active |
-| `form-snapshots` | ❌ React only | ❌ snapshot history | ❌ | IndexedDB (Dexie) | Active |
+| **use-form-draft** | ✅ | ✅ banner + headless hook | ❌ | localStorage | new |
+| `react-hook-form-persist` | ❌ RHF only | ❌ | ❌ | localStorage / sessionStorage | 2025-11 (low velocity) |
+| `react-hook-form-autosave` | ❌ RHF only | ❌ | ✅ | server | 2026-06 (active) |
+| `@ryanflorence/persist-form` | ✅ vanilla HTML form | ❌ | ❌ | localStorage | 2024-12 (stale) |
+| `@zippers/savior` | ✅ vanilla / framework-free | ❌ | ❌ | localStorage / sessionStorage | 2026-02 (active) |
+| `form-snapshots` | ❌ React only | ❌ snapshot history | ❌ | IndexedDB (Dexie) | 2026-03 (active) |
 
-If you only use React Hook Form and don't need a banner, `react-hook-form-persist` does the persistence
-job in fewer bytes. If you want autosave to a server (not a localStorage draft), use
-`react-hook-form-autosave`. If you need snapshot history with undo, look at `form-snapshots`.
-`use-form-draft` is targeted at the *closed-the-tab-and-came-back* recovery flow with a bundled banner UX
-and any form library.
+If you only use React Hook Form and don't need a banner, `react-hook-form-persist` does the
+persistence job in fewer bytes. If you want autosave to a server (not a localStorage draft),
+use `react-hook-form-autosave`. If you need snapshot history with undo, look at
+`form-snapshots`. If you're working with vanilla DOM forms (no React/Vue/etc), `@zippers/savior`
+is purpose-built for that. `use-form-draft` is targeted at the *closed-the-tab-and-came-back*
+recovery flow with a React-idiomatic API, a bundled banner UX, and any form library
+(useState, react-hook-form, formik).
 
 ## Try it locally
 
@@ -237,9 +250,10 @@ Opens a live demo at `http://localhost:5173` with three working examples (vanill
 
 ## What's NOT in v0.1 (planned)
 
-- Cross-tab coordination via the `storage` event
-- IndexedDB storage adapter for large drafts
+- Cross-tab / cross-instance coordination via `BroadcastChannel` or the `storage` event
+- IndexedDB storage adapter for large drafts (file metadata, rich text)
 - `sessionStorage` adapter
+- Banner: focus management, ARIA alert escalation (the v0.1 banner is `role="status"` with `aria-hidden` decorative glyphs — accessible enough for status messaging, not a full alert dialog)
 - Encryption at rest
 
 PRs welcome.

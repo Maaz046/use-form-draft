@@ -80,21 +80,32 @@ function safeDel(key: string): void {
   }
 }
 
-function stripExcluded<T>(state: T, exclude: ReadonlyArray<keyof T> | undefined): T {
-  if (!exclude || exclude.length === 0) return state;
-  if (state === null || typeof state !== 'object') return state;
-  const copy = { ...(state as Record<string, unknown>) } as T;
+type Persistable<T, E extends ReadonlyArray<keyof T>> = E extends ReadonlyArray<never>
+  ? T
+  : Omit<T, E[number]>;
+
+function stripExcluded<T, E extends ReadonlyArray<keyof T>>(
+  state: T,
+  exclude: E | undefined,
+): Persistable<T, E> {
+  if (!exclude || exclude.length === 0) return state as unknown as Persistable<T, E>;
+  if (state === null || typeof state !== 'object') return state as unknown as Persistable<T, E>;
+  const copy = { ...(state as Record<string, unknown>) };
   for (const key of exclude) {
-    delete (copy as Record<string, unknown>)[key as string];
+    delete copy[key as string];
   }
-  return copy;
+  return copy as unknown as Persistable<T, E>;
 }
 
 /**
  * Auto-saves form state to localStorage with a debounced write, and restores it on mount.
  *
  * @param key      Stable storage key. Pattern: `draft:<scope>:<qualifier>` (e.g. `draft:tender:create`).
- * @param state    The form state to persist. Re-runs the debounced write whenever this changes.
+ *                 Two components mounting with the same key concurrently will race; last write wins.
+ *                 Cross-instance coordination is on the v0.1.1 roadmap.
+ * @param state    The form state to persist. Re-runs the write check whenever this changes.
+ *                 Writes only fire when the persisted JSON actually differs from the last write —
+ *                 parent re-renders with unchanged values are no-ops.
  * @param hydrate  Called once on mount if a valid draft is found. Wire it to your form's setter.
  * @param options  See {@link UseFormDraftOptions}.
  */
@@ -121,6 +132,16 @@ export function useFormDraft<T>(
     hydrateRef.current = hydrate;
   });
 
+  // Seed once with the initial persistable JSON — so the very first effect run
+  // (and StrictMode's double-mount) sees "no change vs initial" and writes nothing.
+  // Also prevents writes on parent re-renders where `state` is a new reference
+  // but its JSON is identical (e.g. RHF's form.watch() snapshot).
+  const lastWrittenJsonRef = useRef<string | null>(null);
+  if (lastWrittenJsonRef.current === null) {
+    lastWrittenJsonRef.current = JSON.stringify(stripExcluded(state, exclude));
+  }
+
+  // Restore on mount
   useEffect(() => {
     if (skipRestore) return;
     const draft = safeGet<T>(key, ttlDays, version);
@@ -130,6 +151,8 @@ export function useFormDraft<T>(
       setRestored(true);
       setSavedAt(new Date(draft.savedAt));
       setHadFile(draft.hadFile);
+      // Seed lastWritten so the post-hydrate render doesn't re-persist what we just restored.
+      lastWrittenJsonRef.current = JSON.stringify(stripExcluded(draft.state, exclude));
     } catch {
       safeDel(key);
     }
@@ -137,19 +160,18 @@ export function useFormDraft<T>(
   }, []);
 
   const timerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
-  const mountedRef = useRef(false);
 
+  // Debounced write — only when the persistable JSON actually changes.
   useEffect(() => {
-    if (!mountedRef.current) {
-      mountedRef.current = true;
-      return;
-    }
     if (disabled) return;
+    const payload = stripExcluded(state, exclude);
+    const json = JSON.stringify(payload);
+    if (json === lastWrittenJsonRef.current) return;
 
     if (timerRef.current) clearTimeout(timerRef.current);
     timerRef.current = setTimeout(() => {
-      const payload = stripExcluded(state, exclude);
       safeSet(key, payload, hasFile, version);
+      lastWrittenJsonRef.current = json;
     }, debounceMs);
 
     return () => {

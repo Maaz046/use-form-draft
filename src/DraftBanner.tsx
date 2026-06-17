@@ -21,8 +21,13 @@ export interface DraftBannerProps {
   hadFile?: boolean;
   /** Called when the user clicks Discard. Wire to `useFormDraft().clear`. */
   onDiscard: () => void;
-  /** ms before the banner auto-hides. Default 5000. Set to 0 to disable auto-hide. */
+  /**
+   * ms before the banner auto-hides. Default 10000 (per WAI-ARIA live-region guidance —
+   * shorter is risky for screen-reader users). Set to 0 to disable auto-hide.
+   */
   autoHideMs?: number;
+  /** Listen for the Escape key globally and dismiss the banner. Default false. */
+  escDismiss?: boolean;
   /** Override the close icon. Default is a unicode × character. */
   closeIcon?: ReactNode;
   /** Override i18n strings. */
@@ -86,7 +91,8 @@ export function DraftBanner({
   savedAt,
   hadFile = false,
   onDiscard,
-  autoHideMs = 5000,
+  autoHideMs = 10_000,
+  escDismiss = false,
   closeIcon,
   messages,
   className,
@@ -94,13 +100,29 @@ export function DraftBanner({
 }: DraftBannerProps) {
   const [visible, setVisible] = useState(true);
 
+  // Gate render behind a client-side flag so SSR output matches the first client render.
+  // We can't compute relativeTime() without Date.now(), which would otherwise hydrate-mismatch.
+  const [isClient, setIsClient] = useState(false);
+  useEffect(() => {
+    setIsClient(true);
+  }, []);
+
   useEffect(() => {
     if (!autoHideMs) return;
     const t = setTimeout(() => setVisible(false), autoHideMs);
     return () => clearTimeout(t);
   }, [autoHideMs, savedAt]);
 
-  if (!savedAt || !visible) return null;
+  useEffect(() => {
+    if (!escDismiss || !visible) return;
+    const onKey = (e: KeyboardEvent) => {
+      if (e.key === 'Escape') setVisible(false);
+    };
+    document.addEventListener('keydown', onKey);
+    return () => document.removeEventListener('keydown', onKey);
+  }, [escDismiss, visible]);
+
+  if (!isClient || !savedAt || !visible) return null;
 
   const restored = messages?.restored ?? 'Draft restored';
   const reattach = messages?.reattach ?? 're-attach file';
@@ -115,7 +137,12 @@ export function DraftBanner({
     >
       <span style={{ flex: 1 }}>
         {restored} {relativeTime(savedAt, Date.now())}
-        {hadFile && <span style={MUTED_STYLE}> · {reattach}</span>}
+        {hadFile && (
+          <span style={MUTED_STYLE}>
+            <span aria-hidden="true"> · </span>
+            {reattach}
+          </span>
+        )}
       </span>
       <button
         type="button"
@@ -133,7 +160,7 @@ export function DraftBanner({
         onClick={() => setVisible(false)}
         style={ICON_BUTTON_STYLE}
       >
-        {closeIcon ?? '×'}
+        <span aria-hidden="true">{closeIcon ?? '×'}</span>
       </button>
     </div>
   );
