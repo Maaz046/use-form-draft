@@ -1,0 +1,87 @@
+{
+  "name": "use-form-draft",
+  "version": "0.1.0",
+  "description": "Library-agnostic React hook for auto-saving form drafts to localStorage, with restore-on-mount and a themable recovery banner.",
+  "type": "module",
+  "main": "./dist/index.cjs",
+  "module": "./dist/index.js",
+  "types": "./dist/index.d.ts",
+  "exports": {
+    ".": {
+      "import": {
+        "types": "./dist/index.d.ts",
+        "default": "./dist/index.js"
+      },
+      "require": {
+        "types": "./dist/index.d.cts",
+        "default": "./dist/index.cjs"
+      }
+    },
+    "./rhf": {
+      "import": {
+        "types": "./dist/rhf.d.ts",
+        "default": "./dist/rhf.js"
+      },
+      "require": {
+        "types": "./dist/rhf.d.cts",
+        "default": "./dist/rhf.cjs"
+      }
+    }
+  },
+  "files": [
+    "dist",
+    "README.md",
+    "LICENSE"
+  ],
+  "sideEffects": false,
+  "scripts": {
+    "build": "tsup",
+    "dev": "tsup --watch",
+    "test": "vitest run",
+    "test:watch": "vitest",
+    "typecheck": "tsc --noEmit",
+    "prepublishOnly": "npm run typecheck && npm run test && npm run build"
+  },
+  "keywords": [
+    "react",
+    "form",
+    "draft",
+    "autosave",
+    "localstorage",
+    "persistence",
+    "react-hook-form",
+    "recovery",
+    "use-form-draft"
+  ],
+  "author": "Maaz <info@dastgyr.com>",
+  "license": "MIT",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/Maaz0461/use-form-draft.git"
+  },
+  "bugs": {
+    "url": "https://github.com/Maaz0461/use-form-draft/issues"
+  },
+  "homepage": "https://github.com/Maaz0461/use-form-draft#readme",
+  "peerDependencies": {
+    "react": ">=17",
+    "react-hook-form": ">=7"
+  },
+  "peerDependenciesMeta": {
+    "react-hook-form": {
+      "optional": true
+    }
+  },
+  "devDependencies": {
+    "@testing-library/react": "^16.0.1",
+    "@types/react": "^18.3.12",
+    "@types/react-dom": "^18.3.1",
+    "happy-dom": "^15.11.6",
+    "react": "^18.3.1",
+    "react-dom": "^18.3.1",
+    "react-hook-form": "^7.53.2",
+    "tsup": "^8.3.5",
+    "typescript": "^5.6.3",
+    "vitest": "^2.1.5"
+  }
+}
