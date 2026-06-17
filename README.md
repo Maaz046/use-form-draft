@@ -3,7 +3,7 @@
 Auto-save React form drafts to `localStorage` and restore them on mount, with an opt-in recovery banner.
 Works with plain `useState`, React Hook Form, Formik — anything that has a state value and a setter.
 
-- ~2 KB min+gzip core (RHF adapter +235 B), zero runtime dependencies beyond React
+- ~2 KB min+gzip core, zero runtime dependencies beyond React (RHF adapter ships as a separate sub-entry)
 - Bring your own form library (or none)
 - TTL, schema-version invalidation, sensitive-field exclusion built in
 - React 18 StrictMode & SSR safe — verified by tests, not just guards
@@ -151,6 +151,13 @@ return banner.visible ? (
 
 ### `<DraftBanner />`
 
+Default `autoHideMs` is 10 seconds (WAI-ARIA live-region guidance: shorter is risky for
+screen-reader users). Pass `0` to disable.
+
+Opt-in `escDismiss` adds a **document-level** `keydown` listener for the Escape key.
+This means an Escape press meant to close an unrelated modal will also dismiss the banner
+if one is open. Leave it off if your app uses modal dialogs that handle Esc themselves.
+
 Themable via CSS custom properties — set them anywhere in your CSS to override defaults:
 
 ```css
@@ -195,6 +202,11 @@ useFormDraft('draft:payment', state, hydrate, {
 ```
 
 These keys are stripped before the write. They never touch `localStorage`.
+
+**Type asymmetry caveat (v0.1):** the `hydrate` callback's parameter is still typed as `T`,
+but at runtime excluded fields arrive as `undefined`. Treat `draft.cvv` as `string | undefined`
+in your hydrate. A typed-generic version (`hydrate: (draft: Omit<T, ExcludedKeys>) => void`)
+is planned for v0.2.
 
 ## Edge cases handled
 

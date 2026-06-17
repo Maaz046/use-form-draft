@@ -26,7 +26,12 @@ export interface DraftBannerProps {
    * shorter is risky for screen-reader users). Set to 0 to disable auto-hide.
    */
   autoHideMs?: number;
-  /** Listen for the Escape key globally and dismiss the banner. Default false. */
+  /**
+   * Listen for the Escape key on `document` and dismiss the banner. Default false.
+   *
+   * This is a **global** listener — if your app uses modals/dialogs that handle Escape
+   * themselves, leave this off to avoid the banner getting dismissed alongside the modal.
+   */
   escDismiss?: boolean;
   /** Override the close icon. Default is a unicode × character. */
   closeIcon?: ReactNode;

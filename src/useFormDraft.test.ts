@@ -265,6 +265,109 @@ describe('useFormDraft', () => {
     expect(stored.state).toEqual({ name: 'edited' });
   });
 
+  it('storage stays empty after clear() + setState(empty) — the canonical submit flow', () => {
+    // Round-2 regression: pre-fix, clear() cleared storage but left lastWrittenJsonRef
+    // holding the pre-clear payload. The next setState(empty) then differed from that
+    // stale ref and re-persisted the empty state, silently undoing the submit cleanup.
+    const hydrate = vi.fn();
+    const { result, rerender } = renderHook(
+      ({ state, disabled }: { state: { name: string }; disabled: boolean }) =>
+        useFormDraft('clear:race', state, hydrate, { disabled }),
+      { initialProps: { state: { name: 'typed' }, disabled: false } },
+    );
+    rerender({ state: { name: 'typed more' }, disabled: false });
+    act(() => { vi.advanceTimersByTime(400); });
+    expect(localStorage.getItem('clear:race')).not.toBeNull();
+
+    rerender({ state: { name: 'typed more' }, disabled: true });
+    act(() => { result.current.clear(); });
+    rerender({ state: { name: '' }, disabled: false });
+    act(() => { vi.advanceTimersByTime(800); });
+
+    expect(localStorage.getItem('clear:race')).toBeNull();
+  });
+
+  it('hydrates a draft exactly at the TTL boundary (code uses `>`, equal is not expired)', () => {
+    // ageMs > ttlDays * 86_400_000 is the discard condition.
+    // ageMs === ttlDays * 86_400_000 → NOT expired.
+    const exactlyOneDayAgo = new Date(Date.now() - 86_400_000);
+    localStorage.setItem('test:ttl', JSON.stringify({
+      version: 1,
+      savedAt: exactlyOneDayAgo.toISOString(),
+      hadFile: false,
+      state: { name: 'edge' },
+    }));
+    const hydrate = vi.fn();
+    renderHook(() =>
+      useFormDraft('test:ttl', { name: '' }, hydrate, { ttlDays: 1 }),
+    );
+    expect(hydrate).toHaveBeenCalledWith({ name: 'edge' });
+  });
+
+  it('discards a draft 1ms past the TTL boundary', () => {
+    const justPast = new Date(Date.now() - 86_400_001);
+    localStorage.setItem('test:ttl', JSON.stringify({
+      version: 1,
+      savedAt: justPast.toISOString(),
+      hadFile: false,
+      state: { name: 'expired' },
+    }));
+    const hydrate = vi.fn();
+    renderHook(() =>
+      useFormDraft('test:ttl', { name: '' }, hydrate, { ttlDays: 1 }),
+    );
+    expect(hydrate).not.toHaveBeenCalled();
+  });
+
+  it('two components on the same key — last write wins (documented v0.1 semantics)', () => {
+    const hydrateA = vi.fn();
+    const hydrateB = vi.fn();
+    const { rerender: rerenderA } = renderHook(
+      ({ state }: { state: { x: string } }) => useFormDraft('same:key', state, hydrateA),
+      { initialProps: { state: { x: 'a-initial' } } },
+    );
+    const { rerender: rerenderB } = renderHook(
+      ({ state }: { state: { x: string } }) => useFormDraft('same:key', state, hydrateB),
+      { initialProps: { state: { x: 'b-initial' } } },
+    );
+    rerenderA({ state: { x: 'a-changed' } });
+    act(() => { vi.advanceTimersByTime(400); });
+    rerenderB({ state: { x: 'b-changed' } });
+    act(() => { vi.advanceTimersByTime(400); });
+    const stored = JSON.parse(localStorage.getItem('same:key')!);
+    expect(stored.state).toEqual({ x: 'b-changed' });
+  });
+
+  it('cancels a pending write when disabled flips to true mid-debounce', () => {
+    const hydrate = vi.fn();
+    const { rerender } = renderHook(
+      ({ state, disabled }: { state: { name: string }; disabled: boolean }) =>
+        useFormDraft('test:flip', state, hydrate, { disabled }),
+      { initialProps: { state: { name: 'init' }, disabled: false } },
+    );
+    rerender({ state: { name: 'changed' }, disabled: false });
+    act(() => { vi.advanceTimersByTime(200); });
+    rerender({ state: { name: 'changed' }, disabled: true });
+    act(() => { vi.advanceTimersByTime(800); });
+    expect(localStorage.getItem('test:flip')).toBeNull();
+  });
+
+  it('resumes the write when disabled flips back to false with the form still dirty', () => {
+    const hydrate = vi.fn();
+    const { rerender } = renderHook(
+      ({ state, disabled }: { state: { name: string }; disabled: boolean }) =>
+        useFormDraft('test:flip-back', state, hydrate, { disabled }),
+      { initialProps: { state: { name: 'init' }, disabled: false } },
+    );
+    rerender({ state: { name: 'changed' }, disabled: true });
+    act(() => { vi.advanceTimersByTime(800); });
+    expect(localStorage.getItem('test:flip-back')).toBeNull();
+    rerender({ state: { name: 'changed' }, disabled: false });
+    act(() => { vi.advanceTimersByTime(400); });
+    const stored = JSON.parse(localStorage.getItem('test:flip-back')!);
+    expect(stored.state).toEqual({ name: 'changed' });
+  });
+
   it('does not throw when localStorage is unavailable', () => {
     vi.spyOn(Storage.prototype, 'getItem').mockImplementation(() => {
       throw new Error('QuotaExceededError');

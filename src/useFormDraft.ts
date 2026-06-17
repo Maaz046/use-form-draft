@@ -189,6 +189,9 @@ export function useFormDraft<T>(
       clearTimeout(timerRef.current);
       timerRef.current = null;
     }
+    // Re-seed on next render so a subsequent state reset (e.g. setForm(empty) on submit)
+    // doesn't compare against a stale pre-clear payload and re-persist the reset state.
+    lastWrittenJsonRef.current = null;
   }, [key]);
 
   return { restored, savedAt, hadFile, clear };

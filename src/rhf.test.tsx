@@ -1,6 +1,6 @@
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
 import { renderHook, act } from '@testing-library/react';
-import { useForm } from 'react-hook-form';
+import { useFieldArray, useForm } from 'react-hook-form';
 import { useFormDraftRHF } from './rhf';
 
 interface Shape {
@@ -53,6 +53,43 @@ describe('useFormDraftRHF', () => {
 
     expect(result.current.draft.restored).toBe(true);
     expect(result.current.form.getValues()).toEqual({ title: 'restored title', qty: 99 });
+  });
+
+  it('persists and restores useFieldArray state across remounts', () => {
+    interface ItemsShape {
+      items: { v: number }[];
+    }
+
+    const r1 = renderHook(() => {
+      const form = useForm<ItemsShape>({ defaultValues: { items: [] } });
+      const fa = useFieldArray({ control: form.control, name: 'items' });
+      const draft = useFormDraftRHF(form, { key: 'rhf:fa' });
+      return { form, fa, draft };
+    });
+
+    act(() => {
+      r1.result.current.fa.append({ v: 1 });
+      r1.result.current.fa.append({ v: 2 });
+      r1.result.current.fa.append({ v: 3 });
+    });
+    act(() => { vi.advanceTimersByTime(400); });
+    r1.unmount();
+
+    const stored = JSON.parse(localStorage.getItem('rhf:fa')!);
+    expect(stored.state.items).toEqual([{ v: 1 }, { v: 2 }, { v: 3 }]);
+
+    const r2 = renderHook(() => {
+      const form = useForm<ItemsShape>({ defaultValues: { items: [] } });
+      const fa = useFieldArray({ control: form.control, name: 'items' });
+      const draft = useFormDraftRHF(form, { key: 'rhf:fa' });
+      return { form, fa, draft };
+    });
+    expect(r2.result.current.draft.restored).toBe(true);
+    expect(r2.result.current.form.getValues().items).toEqual([
+      { v: 1 },
+      { v: 2 },
+      { v: 3 },
+    ]);
   });
 
   it('clear() empties storage and resets the restored flag', () => {

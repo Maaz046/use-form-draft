@@ -3,7 +3,11 @@ import { useCallback, useEffect, useState } from 'react';
 export interface UseDraftBannerOptions {
   /** When the restored draft was last saved. Drives the relative-time label and triggers re-show on change. */
   savedAt: Date | null;
-  /** ms before `visible` flips to false on its own. Default 5000. 0 disables auto-hide. */
+  /**
+   * ms before `visible` flips to false on its own. Default 10000 (matches
+   * {@link DraftBanner} and follows WAI-ARIA live-region guidance — shorter
+   * is risky for screen reader users). 0 disables auto-hide.
+   */
   autoHideMs?: number;
   /** Locale for `Intl.RelativeTimeFormat`. Default 'en'. */
   locale?: string;
@@ -43,7 +47,7 @@ function formatRelative(date: Date, now: number, locale: string): string {
  * ) : null;
  */
 export function useDraftBanner(options: UseDraftBannerOptions): UseDraftBannerReturn {
-  const { savedAt, autoHideMs = 5000, locale = 'en' } = options;
+  const { savedAt, autoHideMs = 10_000, locale = 'en' } = options;
   const [visible, setVisible] = useState(Boolean(savedAt));
 
   // Gate Date.now()-derived output behind a post-mount flag to avoid SSR/client
