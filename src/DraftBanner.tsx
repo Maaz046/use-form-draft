@@ -1,7 +1,7 @@
 import { type CSSProperties, type ReactNode, useEffect, useState } from 'react';
 
-function relativeTime(date: Date, now: number): string {
-  const rtf = new Intl.RelativeTimeFormat('en', { numeric: 'auto' });
+function relativeTime(date: Date, now: number, locale: string): string {
+  const rtf = new Intl.RelativeTimeFormat(locale, { numeric: 'auto' });
   const diffMs = date.getTime() - now;
   const diffSec = Math.round(diffMs / 1000);
   const diffMin = Math.round(diffMs / 60_000);
@@ -26,6 +26,8 @@ export interface DraftBannerProps {
    * shorter is risky for screen-reader users). Set to 0 to disable auto-hide.
    */
   autoHideMs?: number;
+  /** Locale for `Intl.RelativeTimeFormat`. Default 'en'. Pairs with `messages` for full i18n. */
+  locale?: string;
   /**
    * Listen for the Escape key on `document` and dismiss the banner. Default false.
    *
@@ -98,6 +100,7 @@ export function DraftBanner({
   onDiscard,
   autoHideMs = 10_000,
   escDismiss = false,
+  locale = 'en',
   closeIcon,
   messages,
   className,
@@ -111,6 +114,12 @@ export function DraftBanner({
   useEffect(() => {
     setIsClient(true);
   }, []);
+
+  // Re-show on savedAt transition — parity with useDraftBanner, so a fresh
+  // restore after a previous dismiss / auto-hide brings the banner back.
+  useEffect(() => {
+    setVisible(true);
+  }, [savedAt]);
 
   useEffect(() => {
     if (!autoHideMs) return;
@@ -141,7 +150,7 @@ export function DraftBanner({
       style={{ ...DEFAULT_STYLE, ...style }}
     >
       <span style={{ flex: 1 }}>
-        {restored} {relativeTime(savedAt, Date.now())}
+        {restored} {relativeTime(savedAt, Date.now(), locale)}
         {hadFile && (
           <span style={MUTED_STYLE}>
             <span aria-hidden="true"> · </span>

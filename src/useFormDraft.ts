@@ -98,11 +98,29 @@ function stripExcluded<T, E extends ReadonlyArray<keyof T>>(
 }
 
 /**
+ * Stringify safely. Returns null if the payload contains a non-serializable
+ * value (BigInt, circular reference, throwing toJSON, Symbol). Callers treat
+ * null as "skip this write" — we'd rather silently no-op than crash the form.
+ */
+function safeStringify(payload: unknown): string | null {
+  try {
+    return JSON.stringify(payload);
+  } catch {
+    return null;
+  }
+}
+
+/**
  * Auto-saves form state to localStorage with a debounced write, and restores it on mount.
  *
- * @param key      Stable storage key. Pattern: `draft:<scope>:<qualifier>` (e.g. `draft:tender:create`).
- *                 Two components mounting with the same key concurrently will race; last write wins.
- *                 Cross-instance coordination is on the v0.1.1 roadmap.
+ * @param key      Storage key. **Must be stable for the component's lifetime in v0.1.** Changing
+ *                 the key while mounted has two failure modes: (1) the new key's existing draft
+ *                 is NOT restored (the restore effect runs once on mount); (2) any pending
+ *                 debounced write for the old key still writes to the old key. If you need a key
+ *                 that depends on a route param or entity id, unmount + remount the component
+ *                 with the new key. Key-change handling is planned for v0.2.
+ *                 Two components mounting with the same key concurrently will race; last write
+ *                 wins. Cross-instance coordination is on the v0.1.1 roadmap.
  * @param state    The form state to persist. Re-runs the write check whenever this changes.
  *                 Writes only fire when the persisted JSON actually differs from the last write —
  *                 parent re-renders with unchanged values are no-ops.
@@ -136,9 +154,11 @@ export function useFormDraft<T>(
   // (and StrictMode's double-mount) sees "no change vs initial" and writes nothing.
   // Also prevents writes on parent re-renders where `state` is a new reference
   // but its JSON is identical (e.g. RHF's form.watch() snapshot).
+  // safeStringify returns null on non-serializable input; we leave the ref null
+  // in that case and the write effect will also no-op (also returning null).
   const lastWrittenJsonRef = useRef<string | null>(null);
   if (lastWrittenJsonRef.current === null) {
-    lastWrittenJsonRef.current = JSON.stringify(stripExcluded(state, exclude));
+    lastWrittenJsonRef.current = safeStringify(stripExcluded(state, exclude));
   }
 
   // Restore on mount
@@ -152,7 +172,10 @@ export function useFormDraft<T>(
       setSavedAt(new Date(draft.savedAt));
       setHadFile(draft.hadFile);
       // Seed lastWritten so the post-hydrate render doesn't re-persist what we just restored.
-      lastWrittenJsonRef.current = JSON.stringify(stripExcluded(draft.state, exclude));
+      // safeStringify keeps a non-serializable restored payload from crashing the effect —
+      // it shouldn't happen in practice (the payload was serializable enough to be stored),
+      // but the contract is "never throw from render/effect into the host app".
+      lastWrittenJsonRef.current = safeStringify(stripExcluded(draft.state, exclude));
     } catch {
       safeDel(key);
     }
@@ -165,7 +188,10 @@ export function useFormDraft<T>(
   useEffect(() => {
     if (disabled) return;
     const payload = stripExcluded(state, exclude);
-    const json = JSON.stringify(payload);
+    const json = safeStringify(payload);
+    // Non-serializable payload (BigInt, circular ref, throwing toJSON): skip silently.
+    // We never want a write to crash the form.
+    if (json === null) return;
     if (json === lastWrittenJsonRef.current) return;
 
     if (timerRef.current) clearTimeout(timerRef.current);

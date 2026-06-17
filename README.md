@@ -225,6 +225,18 @@ is by design for v0.1 — the typical pattern (one form open at a time per key) 
 Cross-instance and cross-tab coordination via `BroadcastChannel` / `storage` events is on the
 v0.1.1 roadmap.
 
+## Key stability (v0.1 contract)
+
+The `key` argument **must be stable for the component's lifetime in v0.1**. Changing it
+mid-mount has two failure modes:
+
+1. The new key's existing draft is **not** restored — the restore effect runs once on mount.
+2. Any pending debounced write for the old key still writes to the old key.
+
+If you need a key that depends on a route param or entity id, **unmount and remount** the
+component with the new key (e.g. `<Form key={id} />` so React swaps the instance). Native
+key-change handling is on the v0.2 roadmap.
+
 ## How this compares
 
 There are several form-persistence libraries in the React ecosystem. This is an honest sketch
@@ -236,9 +248,9 @@ README. Pick the one that fits; none is universally right.
 | **use-form-draft** | ✅ | ✅ banner + headless hook | ❌ | localStorage | new |
 | `react-hook-form-persist` | ❌ RHF only | ❌ | ❌ | localStorage / sessionStorage | 2025-11 (low velocity) |
 | `react-hook-form-autosave` | ❌ RHF only | ❌ | ✅ | server | 2026-06 (active) |
-| `@ryanflorence/persist-form` | ✅ vanilla HTML form | ❌ | ❌ | localStorage | 2024-12 (stale) |
+| `@ryanflorence/persist-form` | ✅ vanilla HTML form | ❌ | ❌ | sessionStorage | 2024-12 (stale) |
 | `@zippers/savior` | ✅ vanilla / framework-free | ❌ | ❌ | localStorage / sessionStorage | 2026-02 (active) |
-| `form-snapshots` | ❌ React only | ❌ snapshot history | ❌ | IndexedDB (Dexie) | 2026-03 (active) |
+| `form-snapshots` | ✅ (via `useFormSnapshots`) | ❌ snapshot history UI in devtools | ❌ | IndexedDB (Dexie) | 2026-03 (active) |
 
 If you only use React Hook Form and don't need a banner, `react-hook-form-persist` does the
 persistence job in fewer bytes. If you want autosave to a server (not a localStorage draft),

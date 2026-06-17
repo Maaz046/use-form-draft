@@ -368,6 +368,25 @@ describe('useFormDraft', () => {
     expect(stored.state).toEqual({ name: 'changed' });
   });
 
+  it('does not crash on non-serializable state (circular reference)', () => {
+    interface Circ { name: string; self?: Circ }
+    const circular: Circ = { name: 'x' };
+    circular.self = circular;
+    const hydrate = vi.fn();
+
+    expect(() => {
+      const { rerender } = renderHook(
+        ({ state }: { state: Circ }) =>
+          useFormDraft('circ', state, hydrate),
+        { initialProps: { state: circular } },
+      );
+      rerender({ state: circular });
+      act(() => { vi.advanceTimersByTime(400); });
+    }).not.toThrow();
+    // Storage stays empty because stringify failed silently
+    expect(localStorage.getItem('circ')).toBeNull();
+  });
+
   it('does not throw when localStorage is unavailable', () => {
     vi.spyOn(Storage.prototype, 'getItem').mockImplementation(() => {
       throw new Error('QuotaExceededError');
