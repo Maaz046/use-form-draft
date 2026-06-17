@@ -40,6 +40,8 @@
     "test": "vitest run",
     "test:watch": "vitest",
     "typecheck": "tsc --noEmit",
+    "demo": "npm --prefix examples run dev",
+    "demo:build": "npm --prefix examples run build",
     "prepublishOnly": "npm run typecheck && npm run test && npm run build"
   },
   "keywords": [
@@ -53,16 +55,16 @@
     "recovery",
     "use-form-draft"
   ],
-  "author": "Maaz <info@dastgyr.com>",
+  "author": "Maaz046 <Maaz046@users.noreply.github.com>",
   "license": "MIT",
   "repository": {
     "type": "git",
-    "url": "git+https://github.com/Maaz0461/use-form-draft.git"
+    "url": "git+https://github.com/Maaz046/use-form-draft.git"
   },
   "bugs": {
-    "url": "https://github.com/Maaz0461/use-form-draft/issues"
+    "url": "https://github.com/Maaz046/use-form-draft/issues"
   },
-  "homepage": "https://github.com/Maaz0461/use-form-draft#readme",
+  "homepage": "https://github.com/Maaz046/use-form-draft#readme",
   "peerDependencies": {
     "react": ">=17",
     "react-hook-form": ">=7"

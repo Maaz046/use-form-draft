@@ -223,6 +223,18 @@ job in fewer bytes. If you want autosave to a server (not a localStorage draft),
 `use-form-draft` is targeted at the *closed-the-tab-and-came-back* recovery flow with a bundled banner UX
 and any form library.
 
+## Try it locally
+
+```bash
+git clone https://github.com/Maaz046/use-form-draft.git
+cd use-form-draft
+npm install
+npm --prefix examples install
+npm run demo
+```
+
+Opens a live demo at `http://localhost:5173` with three working examples (vanilla useState, React Hook Form, Formik). Type into any form, close the tab, reopen — the draft is restored.
+
 ## What's NOT in v0.1 (planned)
 
 - Cross-tab coordination via the `storage` event
