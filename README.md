@@ -11,6 +11,8 @@
 
 Long forms get abandoned mid-fill — a switched tab, a browser crash, an accidental refresh. `use-form-draft` is the small, tested helper that quietly persists what the user has typed and offers it back when they return.
 
+**[📦 npm](https://www.npmjs.com/package/use-form-draft)** &nbsp;·&nbsp; **[💻 GitHub](https://github.com/Maaz046/use-form-draft)** &nbsp;·&nbsp; **[🐛 Issues](https://github.com/Maaz046/use-form-draft/issues)** &nbsp;·&nbsp; **[📋 Changelog](https://github.com/Maaz046/use-form-draft/releases)**
+
 ## Contents
 
 - [Why it exists](#why-it-exists)
