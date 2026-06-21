@@ -2,6 +2,7 @@
 
 > Auto-save React form drafts to `localStorage` and restore them on mount — with an optional recovery banner. Works with plain `useState`, React Hook Form, Formik, or anything that has a value and a setter.
 
+[![CI](https://github.com/Maaz046/use-form-draft/actions/workflows/ci.yml/badge.svg)](https://github.com/Maaz046/use-form-draft/actions/workflows/ci.yml)
 [![npm version](https://img.shields.io/npm/v/use-form-draft?color=cb3837)](https://www.npmjs.com/package/use-form-draft)
 [![npm downloads](https://img.shields.io/npm/dm/use-form-draft?color=cb3837)](https://www.npmjs.com/package/use-form-draft)
 ![license](https://img.shields.io/badge/license-MIT-3b82f6)
@@ -57,7 +58,7 @@ Every team eventually writes its own "debounce the form state into `localStorage
 ## Features
 
 - **Library-agnostic.** Anything with a value and a setter: `useState`, React Hook Form, Formik, or your own reducer.
-- **Tiny.** ~2 kB min+gzip core, **zero runtime dependencies** beyond React. The React Hook Form adapter ships as a separate `use-form-draft/rhf` entry, so you only pay for it if you import it.
+- **Tiny.** ~2 kB min+gzip core, **zero runtime dependencies** beyond React. The React Hook Form and Formik adapters ship as separate `use-form-draft/rhf` and `use-form-draft/formik` entries, so you only pay for the one you import.
 - **Debounced writes**, with a no-op when the persisted JSON hasn't actually changed.
 - **Restore on mount** with a `savedAt` timestamp for "restored 3 minutes ago" messaging.
 - **TTL expiry** — drafts older than N days are silently discarded on read.
@@ -79,7 +80,7 @@ pnpm add use-form-draft
 yarn add use-form-draft
 ```
 
-`react >= 17` is a peer dependency. `react-hook-form >= 7` is an **optional** peer — only needed if you import the `use-form-draft/rhf` entry.
+`react >= 17` is a peer dependency. `react-hook-form >= 7` and `formik >= 2` are **optional** peers — only needed if you import the `use-form-draft/rhf` or `use-form-draft/formik` entry respectively.
 
 ## Quick start (plain `useState`)
 
@@ -171,11 +172,12 @@ function NewTenderForm() {
 
 ### Formik
 
-There's no Formik-specific adapter — you don't need one. Feed Formik's `values` as the state and its `setValues` as the hydrate:
+Use the adapter from `use-form-draft/formik`. It reads `formik.values`, hydrates restored drafts via `formik.setValues`, and pauses writes while `formik.isSubmitting` is true:
 
 ```tsx
 import { useFormik } from 'formik';
-import { useFormDraft, DraftBanner } from 'use-form-draft';
+import { DraftBanner } from 'use-form-draft';
+import { useFormDraftFormik } from 'use-form-draft/formik';
 
 function NewTenderForm() {
   const formik = useFormik<TenderInput>({
@@ -187,12 +189,7 @@ function NewTenderForm() {
     },
   });
 
-  const draft = useFormDraft<TenderInput>(
-    'draft:tender:create',
-    formik.values,
-    (saved) => formik.setValues(saved),
-    { disabled: formik.isSubmitting },
-  );
+  const draft = useFormDraftFormik(formik, { key: 'draft:tender:create' });
 
   return (
     <form onSubmit={formik.handleSubmit}>
@@ -204,6 +201,8 @@ function NewTenderForm() {
   );
 }
 ```
+
+Prefer wiring it by hand? The core hook is form-library-agnostic — pass `formik.values` as the state and `(saved) => formik.setValues(saved)` as the hydrate, with `disabled: formik.isSubmitting`. The adapter just packages that.
 
 ### Headless banner
 
@@ -371,6 +370,14 @@ Headless banner state. `options`: `{ savedAt: Date | null; autoHideMs?: number; 
 ### `useFormDraftRHF(form, options)` — `use-form-draft/rhf`
 
 React Hook Form adapter. `form` is a `UseFormReturn<T>`. `options` takes every `useFormDraft` option **except** `disabled`, plus a **required** `key`. It supplies `state` and `hydrate` automatically and disables writes while `formState.isSubmitting` is true (pass `disabled` to override). Returns the same `UseFormDraftReturn`.
+
+### `useFormDraftFormik(formik, options)` — `use-form-draft/formik`
+
+Formik adapter. `formik` is the bag returned by `useFormik` / `<Formik>` (a `FormikProps<T>`). `options` takes every `useFormDraft` option **except** `disabled`, plus a **required** `key`. It persists `formik.values`, hydrates via `formik.setValues`, and disables writes while `formik.isSubmitting` is true (pass `disabled` to override). Returns the same `UseFormDraftReturn`.
+
+### `DraftStorage`
+
+The storage interface accepted by `options.storage`: `{ getItem(key): string | null; setItem(key, value): void; removeItem(key): void }`. `window.localStorage` and `window.sessionStorage` satisfy it out of the box.
 
 ### `DraftPayload<T>`
 

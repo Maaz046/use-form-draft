@@ -1,6 +1,6 @@
 {
   "name": "use-form-draft",
-  "version": "0.2.0",
+  "version": "0.3.0",
   "description": "Library-agnostic React hook for auto-saving form drafts to localStorage, with restore-on-mount and a themable recovery banner.",
   "type": "module",
   "main": "./dist/index.cjs",
@@ -26,11 +26,22 @@
         "types": "./dist/rhf.d.cts",
         "default": "./dist/rhf.cjs"
       }
+    },
+    "./formik": {
+      "import": {
+        "types": "./dist/formik.d.ts",
+        "default": "./dist/formik.js"
+      },
+      "require": {
+        "types": "./dist/formik.d.cts",
+        "default": "./dist/formik.cjs"
+      }
     }
   },
   "files": [
     "dist",
     "README.md",
+    "CHANGELOG.md",
     "LICENSE"
   ],
   "sideEffects": false,
@@ -48,8 +59,11 @@
     "draft",
     "autosave",
     "localstorage",
+    "sessionstorage",
     "persistence",
     "react-hook-form",
+    "formik",
+    "cross-tab",
     "recovery",
     "use-form-draft"
   ],
@@ -65,10 +79,14 @@
   "homepage": "https://github.com/Maaz046/use-form-draft#readme",
   "peerDependencies": {
     "react": ">=17",
-    "react-hook-form": ">=7"
+    "react-hook-form": ">=7",
+    "formik": ">=2"
   },
   "peerDependenciesMeta": {
     "react-hook-form": {
+      "optional": true
+    },
+    "formik": {
       "optional": true
     }
   },
@@ -76,6 +94,7 @@
     "@testing-library/react": "^16.0.1",
     "@types/react": "^18.3.12",
     "@types/react-dom": "^18.3.1",
+    "formik": "^2.4.9",
     "happy-dom": "^15.11.6",
     "react": "^18.3.1",
     "react-dom": "^18.3.1",

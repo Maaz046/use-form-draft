@@ -4,6 +4,7 @@ export default defineConfig({
   entry: {
     index: 'src/index.ts',
     rhf: 'src/rhf.ts',
+    formik: 'src/formik.ts',
   },
   format: ['esm', 'cjs'],
   dts: true,
@@ -11,5 +12,5 @@ export default defineConfig({
   clean: true,
   treeshake: true,
   minify: false,
-  external: ['react', 'react-dom', 'react-hook-form'],
+  external: ['react', 'react-dom', 'react-hook-form', 'formik'],
 });
