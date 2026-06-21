@@ -1,22 +1,76 @@
 # use-form-draft
 
-Auto-save React form drafts to `localStorage` and restore them on mount, with an opt-in recovery banner.
-Works with plain `useState`, React Hook Form, Formik — anything that has a state value and a setter.
+> Auto-save React form drafts to `localStorage` and restore them on mount — with an optional recovery banner. Works with plain `useState`, React Hook Form, Formik, or anything that has a value and a setter.
 
-- ~2 KB min+gzip core, zero runtime dependencies beyond React (RHF adapter ships as a separate sub-entry)
-- Bring your own form library (or none)
-- TTL, schema-version invalidation, sensitive-field exclusion built in
-- React 18 StrictMode & SSR safe — verified by tests, not just guards
-- Optional themable banner + a headless hook if you want to roll your own UI
-- React Hook Form adapter shipped under `use-form-draft/rhf`
+![license](https://img.shields.io/badge/license-MIT-3b82f6)
+![size](https://img.shields.io/badge/min%2Bgzip-~2%20kB-22c55e)
+![deps](https://img.shields.io/badge/runtime%20deps-0-22c55e)
+![types](https://img.shields.io/badge/types-included-3b82f6)
 
-## Why this exists
+Long forms get abandoned mid-fill — a switched tab, a browser crash, an accidental refresh. `use-form-draft` is the small, tested helper that quietly persists what the user has typed and offers it back when they return.
 
-Long forms get abandoned mid-fill — switched tabs, browser crash, accidental refresh. Every team eventually
-writes their own debounced-write-to-localStorage helper, gets the TTL or the schema-version edge case
-wrong, and ships it half-finished. This is that helper, productised and tested.
+---
+
+> [!IMPORTANT]
+> **Status — pre-release (`v0.1.0`).** The library is feature-complete and covered by a substantial test suite, but it is **not yet published to npm**. Until the first release is cut, install it [from source](#local-development). The `npm install` line below is how you'll add it once it's published. There are no other distribution channels yet — if you find it on a registry under this name before an official release, it isn't from this project.
+
+---
+
+## Contents
+
+- [Why it exists](#why-it-exists)
+- [Features](#features)
+- [Install](#install)
+- [Quick start](#quick-start-plain-usestate)
+- [How it works](#how-it-works)
+- [Recipes](#recipes)
+  - [React Hook Form](#react-hook-form)
+  - [Formik](#formik)
+  - [Headless banner](#headless-banner)
+  - [Excluding sensitive fields](#excluding-sensitive-fields)
+  - [Schema versioning](#schema-versioning)
+  - [Expiry (TTL)](#expiry-ttl)
+  - [Theming the banner](#theming-the-banner)
+  - [Internationalisation](#internationalisation)
+- [API reference](#api-reference)
+- [Behaviour & guarantees](#behaviour--guarantees)
+- [Limitations (the v0.1 contract)](#limitations-the-v01-contract)
+- [Roadmap](#roadmap)
+- [How it compares](#how-it-compares)
+- [FAQ](#faq)
+- [Local development](#local-development)
+- [Contributing](#contributing)
+- [License](#license)
+
+## Why it exists
+
+Every team eventually writes its own "debounce the form state into `localStorage` and read it back" helper. It looks trivial, then the edge cases arrive:
+
+- It writes the **initial empty state** over a good saved draft on first paint.
+- It double-writes under React 18 **StrictMode**.
+- It crashes the whole form when `localStorage` is **full or disabled** (private browsing).
+- It re-persists on **identity-only re-renders** (the React Hook Form `watch()` pattern), thrashing storage.
+- It hydrates a **stale draft into a changed schema** and throws.
+- It keeps a **poisoned draft** that crash-loops on every remount.
+
+`use-form-draft` is that helper with all of those handled and tested, behind a small API. No global store, no provider, no opinion about your form library.
+
+## Features
+
+- **Library-agnostic.** Anything with a value and a setter: `useState`, React Hook Form, Formik, or your own reducer.
+- **Tiny.** ~2 kB min+gzip core, **zero runtime dependencies** beyond React. The React Hook Form adapter ships as a separate `use-form-draft/rhf` entry, so you only pay for it if you import it.
+- **Debounced writes**, with a no-op when the persisted JSON hasn't actually changed.
+- **Restore on mount** with a `savedAt` timestamp for "restored 3 minutes ago" messaging.
+- **TTL expiry** — drafts older than N days are silently discarded on read.
+- **Schema versioning** — bump a number to invalidate incompatible old drafts instead of crashing on them.
+- **Sensitive-field exclusion** — strip passwords / CVVs before anything touches storage.
+- **Recovery UI, your choice** — a themeable `<DraftBanner>`, a headless `useDraftBanner` hook, or nothing at all.
+- **SSR- and StrictMode-safe** — verified by `react-dom/server` and double-mount tests, not just guards.
+- **Fully typed**, ESM + CJS, with bundled `.d.ts`.
 
 ## Install
+
+> Not on npm yet — see [Status](#use-form-draft) above. Once published:
 
 ```bash
 npm install use-form-draft
@@ -26,10 +80,11 @@ pnpm add use-form-draft
 yarn add use-form-draft
 ```
 
-React 17+ peer dependency. React Hook Form is an *optional* peer — only required if you import the
-`use-form-draft/rhf` entry.
+`react >= 17` is a peer dependency. `react-hook-form >= 7` is an **optional** peer — only needed if you import the `use-form-draft/rhf` entry.
 
-## 30-second example (plain useState)
+Until the first release, install [from source](#local-development).
+
+## Quick start (plain `useState`)
 
 ```tsx
 import { useState } from 'react';
@@ -45,26 +100,23 @@ function NewTenderForm() {
   const [saving, setSaving] = useState(false);
 
   const draft = useFormDraft<TenderInput>(
-    'draft:tender:create',
-    form,
-    setForm, // hydrate
-    { disabled: saving },
+    'draft:tender:create', // stable storage key
+    form,                  // state that drives the write
+    setForm,               // hydrate: called once if a draft is found
+    { disabled: saving },  // pause writes during submit
   );
 
   async function submit() {
     setSaving(true);
     await api.createTender(form);
-    draft.clear(); // remove the stored draft on success
+    draft.clear();         // remove the stored draft on success
     setSaving(false);
   }
 
   return (
     <form onSubmit={(e) => { e.preventDefault(); submit(); }}>
-      <DraftBanner
-        savedAt={draft.savedAt}
-        hadFile={draft.hadFile}
-        onDiscard={draft.clear}
-      />
+      <DraftBanner savedAt={draft.savedAt} onDiscard={draft.clear} />
+
       <input
         value={form.title}
         onChange={(e) => setForm({ ...form, title: e.target.value })}
@@ -80,9 +132,23 @@ function NewTenderForm() {
 }
 ```
 
-That's it. Close the tab, come back, the form is restored and the banner says *"Draft restored 3 minutes ago"*.
+Close the tab, come back, and the form is restored with the banner reading *"Draft restored 3 minutes ago"*. On a successful submit, `draft.clear()` removes the stored draft so the next visit starts clean.
 
-## React Hook Form
+## How it works
+
+The hook does three things, and nothing else:
+
+1. **On mount** it reads the key once. If a draft exists, is the right schema `version`, and is younger than `ttlDays`, it calls your `hydrate` callback with the stored state and exposes `savedAt` / `hadFile`. If anything is wrong (missing, corrupt, expired, wrong version), it stays quiet.
+2. **While mounted** it watches `state`. When the *persistable* JSON changes, it schedules a debounced write (default 400 ms). If the JSON is identical to what was last written — including the initial render and identity-only re-renders — it writes nothing.
+3. **On `clear()`** it deletes the key, cancels any pending write, and resets its internal "last written" marker so a follow-up state reset (e.g. `setForm(empty)` after submit) doesn't immediately re-persist.
+
+Everything is keyed off the *content* of `state`, serialised with `JSON.stringify`. If a value can't be serialised (a `BigInt`, a circular reference, a throwing `toJSON`), that write is skipped silently rather than throwing into your form.
+
+## Recipes
+
+### React Hook Form
+
+Use the dedicated adapter from `use-form-draft/rhf`. It wires `form.watch()` for change tracking and `form.reset()` for hydration, and automatically pauses writes while `formState.isSubmitting` is true.
 
 ```tsx
 import { useForm } from 'react-hook-form';
@@ -95,11 +161,7 @@ function NewTenderForm() {
 
   return (
     <form onSubmit={form.handleSubmit(submit)}>
-      <DraftBanner
-        savedAt={draft.savedAt}
-        hadFile={draft.hadFile}
-        onDiscard={draft.clear}
-      />
+      <DraftBanner savedAt={draft.savedAt} onDiscard={draft.clear} />
       <input {...form.register('title')} />
       <input type="number" {...form.register('qty', { valueAsNumber: true })} />
       <button>Submit</button>
@@ -108,92 +170,63 @@ function NewTenderForm() {
 }
 ```
 
-The adapter wires `form.watch()` for change tracking and `form.reset()` for hydration. Writes are
-automatically paused while `formState.isSubmitting` is true.
+`useFieldArray` (dynamic rows) round-trips correctly across reloads — it's covered by a test.
 
-## Headless banner
+### Formik
 
-If the bundled `<DraftBanner>` doesn't fit your design system, drive your own UI with `useDraftBanner`:
+There's no Formik-specific adapter — you don't need one. Feed Formik's `values` as the state and its `setValues` as the hydrate:
+
+```tsx
+import { useFormik } from 'formik';
+import { useFormDraft, DraftBanner } from 'use-form-draft';
+
+function NewTenderForm() {
+  const formik = useFormik<TenderInput>({
+    initialValues: { title: '', qty: 0 },
+    onSubmit: async (values, helpers) => {
+      await api.createTender(values);
+      draft.clear();
+      helpers.setSubmitting(false);
+    },
+  });
+
+  const draft = useFormDraft<TenderInput>(
+    'draft:tender:create',
+    formik.values,
+    (saved) => formik.setValues(saved),
+    { disabled: formik.isSubmitting },
+  );
+
+  return (
+    <form onSubmit={formik.handleSubmit}>
+      <DraftBanner savedAt={draft.savedAt} onDiscard={draft.clear} />
+      <input name="title" value={formik.values.title} onChange={formik.handleChange} />
+      <input name="qty" type="number" value={formik.values.qty} onChange={formik.handleChange} />
+      <button type="submit">Submit</button>
+    </form>
+  );
+}
+```
+
+### Headless banner
+
+If the bundled `<DraftBanner>` doesn't fit your design system, drive your own UI with `useDraftBanner`. It owns the visibility lifecycle (auto-hide, re-show on a fresh restore) and formats the relative time for you:
 
 ```tsx
 import { useDraftBanner } from 'use-form-draft';
 
-const banner = useDraftBanner({
-  savedAt: draft.savedAt,
-  autoHideMs: 8000,
-});
+const banner = useDraftBanner({ savedAt: draft.savedAt, autoHideMs: 8000 });
 
 return banner.visible ? (
-  <MyOwnToast onDismiss={banner.dismiss}>
+  <MyToast onDismiss={banner.dismiss}>
     Draft restored {banner.relativeTime}
-  </MyOwnToast>
+  </MyToast>
 ) : null;
 ```
 
-## API
+### Excluding sensitive fields
 
-### `useFormDraft<T>(key, state, hydrate, options?)`
-
-| Param | Type | Notes |
-|---|---|---|
-| `key` | `string` | Stable storage key. Convention: `draft:<scope>:<qualifier>` |
-| `state` | `T` | Your form state. Drives the debounced write. |
-| `hydrate` | `(draft: T) => void` | Called once on mount if a valid draft is found. |
-| `options.disabled` | `boolean` | Pause writes (use during submit). |
-| `options.skipRestore` | `boolean` | Skip restore-on-mount. |
-| `options.ttlDays` | `number` | Default 30. Drafts older than this are discarded. |
-| `options.hasFile` | `boolean` | Stored as a flag so the banner can prompt re-attach. |
-| `options.version` | `number` | Schema version. Bump to invalidate old drafts. Default 1. |
-| `options.exclude` | `(keyof T)[]` | Strip keys before persisting (passwords, CVVs). |
-| `options.debounceMs` | `number` | Default 400. |
-
-**Returns**: `{ restored, savedAt, hadFile, clear }`.
-
-### `<DraftBanner />`
-
-Default `autoHideMs` is 10 seconds (WAI-ARIA live-region guidance: shorter is risky for
-screen-reader users). Pass `0` to disable.
-
-Opt-in `escDismiss` adds a **document-level** `keydown` listener for the Escape key.
-This means an Escape press meant to close an unrelated modal will also dismiss the banner
-if one is open. Leave it off if your app uses modal dialogs that handle Esc themselves.
-
-Themable via CSS custom properties — set them anywhere in your CSS to override defaults:
-
-```css
-:root {
-  --ufd-banner-bg: #fff7f0;
-  --ufd-banner-border: #f26422;
-  --ufd-banner-text: #374151;
-  --ufd-banner-muted: #9ca3af;
-}
-```
-
-Or pass `className` / `style` for one-off overrides. Pass `messages` for i18n.
-
-### `useDraftBanner(options)`
-
-Headless variant. Returns `{ visible, dismiss, relativeTime }`.
-
-### `useFormDraftRHF(form, options)` (`use-form-draft/rhf`)
-
-React Hook Form adapter. Same options as `useFormDraft`, plus a required `key`. The `state` and `hydrate`
-arguments are wired automatically.
-
-## Schema versioning — when to bump `version`
-
-You'll need to bump when your form's shape changes incompatibly:
-
-```tsx
-// v1: { title: string }
-// v2: { title: { en: string; ar: string } }
-useFormDraft('draft:tender', state, hydrate, { version: 2 });
-```
-
-Old `v1` drafts in `localStorage` will be silently discarded instead of hydrating into the new shape and
-crashing the form. Backwards-compatible additions don't need a version bump.
-
-## Excluding sensitive fields
+Strip secrets before anything is written. Listed keys never touch `localStorage`:
 
 ```tsx
 useFormDraft('draft:payment', state, hydrate, {
@@ -201,87 +234,204 @@ useFormDraft('draft:payment', state, hydrate, {
 });
 ```
 
-These keys are stripped before the write. They never touch `localStorage`.
+> [!NOTE]
+> **Type caveat (v0.1).** The `hydrate` callback's parameter is still typed as the full `T`, but at runtime the excluded keys arrive as `undefined`. Treat `draft.cvv` as `string | undefined` inside your hydrate. A precisely-typed signature (`hydrate: (draft: Omit<T, ExcludedKeys>) => void`) is planned for v0.2.
 
-**Type asymmetry caveat (v0.1):** the `hydrate` callback's parameter is still typed as `T`,
-but at runtime excluded fields arrive as `undefined`. Treat `draft.cvv` as `string | undefined`
-in your hydrate. A typed-generic version (`hydrate: (draft: Omit<T, ExcludedKeys>) => void`)
-is planned for v0.2.
+### Schema versioning
 
-## Edge cases handled
+When your form's shape changes in a way old drafts can't satisfy, bump `version`. Stale drafts are discarded instead of hydrating into the new shape and crashing:
 
-- `localStorage` unavailable (private browsing, quota exceeded, disabled by user): silent no-ops
-- Corrupted JSON in storage: discarded
-- Hydrate callback throws: draft discarded so a re-mount doesn't keep crashing
-- **React 18 StrictMode**: the hook does not write the initial state on its intentional double-mount (covered by a dedicated test)
-- **SSR (Next.js, Remix)**: covered by a `react-dom/server` test. `useFormDraft` renders without throwing; `DraftBanner` returns null on the server to avoid hydration mismatch; `useDraftBanner` returns `relativeTime: null` until after mount.
-- Rapid input: writes are debounced
-- **Identity-only re-renders**: if `state` is a new object reference each render but its JSON-persistable shape is unchanged (the React Hook Form `form.watch()` pattern), no write happens. Writes only fire when the persisted JSON actually differs.
+```tsx
+// v1: { title: string }
+// v2: { title: { en: string; ar: string } }
+useFormDraft('draft:tender', state, hydrate, { version: 2 });
+```
 
-## Same-key behavior
+Backwards-compatible additions (a new optional field) don't need a bump.
 
-If two components mount with the same `key` concurrently, writes race and last-write wins. This
-is by design for v0.1 — the typical pattern (one form open at a time per key) is safe.
-Cross-instance and cross-tab coordination via `BroadcastChannel` / `storage` events is on the
-v0.1.1 roadmap.
+### Expiry (TTL)
 
-## Key stability (v0.1 contract)
+Drafts older than `ttlDays` (default **30**) are treated as absent on read and cleaned up:
 
-The `key` argument **must be stable for the component's lifetime in v0.1**. Changing it
-mid-mount has two failure modes:
+```tsx
+useFormDraft('draft:tender', state, hydrate, { ttlDays: 7 });
+```
 
-1. The new key's existing draft is **not** restored — the restore effect runs once on mount.
-2. Any pending debounced write for the old key still writes to the old key.
+### Theming the banner
 
-If you need a key that depends on a route param or entity id, **unmount and remount** the
-component with the new key (e.g. `<Form key={id} />` so React swaps the instance). Native
-key-change handling is on the v0.2 roadmap.
+`<DraftBanner>` is styled with inline defaults that read from CSS custom properties. Set them anywhere in your CSS to retheme every banner at once:
 
-## How this compares
+```css
+:root {
+  --ufd-banner-bg: #fffbeb;     /* background        (default) */
+  --ufd-banner-border: #f59e0b; /* left accent bar   (default) */
+  --ufd-banner-text: #374151;   /* message text      (default) */
+  --ufd-banner-muted: #9ca3af;  /* buttons / hints   (default) */
+}
+```
 
-There are several form-persistence libraries in the React ecosystem. This is an honest sketch
-— last-release dates and feature columns audited against `npm view <pkg>` and each package's
-README. Pick the one that fits; none is universally right.
+For one-off overrides, pass `className` or `style` — both are merged onto the outer container.
 
-| Package | Form-lib-agnostic | Bundled recovery UI | Server-autosave | Storage | Last release |
-|---|:-:|:-:|:-:|---|---|
-| **use-form-draft** | ✅ | ✅ banner + headless hook | ❌ | localStorage | new |
-| `react-hook-form-persist` | ❌ RHF only | ❌ | ❌ | localStorage / sessionStorage | 2025-11 (low velocity) |
-| `react-hook-form-autosave` | ❌ RHF only | ❌ | ✅ | server | 2026-06 (active) |
-| `@ryanflorence/persist-form` | ✅ vanilla HTML form | ❌ | ❌ | sessionStorage | 2024-12 (stale) |
-| `@zippers/savior` | ✅ vanilla / framework-free | ❌ | ❌ | localStorage / sessionStorage | 2026-02 (active) |
-| `form-snapshots` | ✅ (via `useFormSnapshots`) | ❌ snapshot history UI in devtools | ❌ | IndexedDB (Dexie) | 2026-03 (active) |
+### Internationalisation
 
-If you only use React Hook Form and don't need a banner, `react-hook-form-persist` does the
-persistence job in fewer bytes. If you want autosave to a server (not a localStorage draft),
-use `react-hook-form-autosave`. If you need snapshot history with undo, look at
-`form-snapshots`. If you're working with vanilla DOM forms (no React/Vue/etc), `@zippers/savior`
-is purpose-built for that. `use-form-draft` is targeted at the *closed-the-tab-and-came-back*
-recovery flow with a React-idiomatic API, a bundled banner UX, and any form library
-(useState, react-hook-form, formik).
+Pass `locale` (drives `Intl.RelativeTimeFormat`) and `messages` to fully localise the banner:
 
-## Try it locally
+```tsx
+<DraftBanner
+  savedAt={draft.savedAt}
+  onDiscard={draft.clear}
+  locale="ar"
+  messages={{ restored: 'تم استرجاع المسودة', discard: 'تجاهل', dismiss: 'إغلاق' }}
+/>
+```
+
+## API reference
+
+### `useFormDraft<T>(key, state, hydrate, options?)`
+
+| Param | Type | Notes |
+|---|---|---|
+| `key` | `string` | Stable storage key. Convention: `draft:<scope>:<qualifier>`. Must be stable for the component's lifetime — see [Limitations](#limitations-the-v01-contract). |
+| `state` | `T` | Your form state. Drives the debounced write. |
+| `hydrate` | `(draft: T) => void` | Called **once** on mount if a valid draft is found. Wire it to your setter. |
+| `options.disabled` | `boolean` | Pause writes (use during submit). Default `false`. |
+| `options.skipRestore` | `boolean` | Skip the restore-on-mount step. Default `false`. |
+| `options.ttlDays` | `number` | Drafts older than this are discarded on read. Default `30`. |
+| `options.version` | `number` | Schema version. Bump to invalidate old drafts. Default `1`. |
+| `options.exclude` | `ReadonlyArray<keyof T>` | Keys stripped before persisting (passwords, CVVs). |
+| `options.hasFile` | `boolean` | Stored as a flag so the banner can prompt re-attach. File *content* is never persisted. Default `false`. |
+| `options.debounceMs` | `number` | Write debounce window. Default `400`. |
+
+**Returns** `UseFormDraftReturn`:
+
+| Field | Type | Notes |
+|---|---|---|
+| `restored` | `boolean` | True if a draft was found and hydrated on mount. |
+| `savedAt` | `Date \| null` | When the restored draft was last saved, else `null`. |
+| `hadFile` | `boolean` | Whether the restored draft had a file flagged. |
+| `clear` | `() => void` | Delete the persisted draft and reset hook state. Call on successful submit. |
+
+### `<DraftBanner />`
+
+| Prop | Type | Default | Notes |
+|---|---|---|---|
+| `savedAt` | `Date \| null` | — | From `useFormDraft().savedAt`. Renders nothing while `null`. |
+| `onDiscard` | `() => void` | — | Wire to `useFormDraft().clear`. |
+| `hadFile` | `boolean` | `false` | Appends a "re-attach file" hint when true. |
+| `autoHideMs` | `number` | `10000` | ms before auto-hide. `0` disables it. The 10 s default follows WAI-ARIA live-region guidance — shorter is risky for screen-reader users. |
+| `escDismiss` | `boolean` | `false` | Adds a **document-level** Escape listener. Leave off if your app has modals that handle Esc themselves, or the banner will be dismissed alongside them. |
+| `locale` | `string` | `'en'` | For `Intl.RelativeTimeFormat`. |
+| `messages` | `object` | — | `{ restored, reattach, discard, dismiss }` string overrides. |
+| `closeIcon` | `ReactNode` | `'×'` | Override the close glyph. |
+| `className` | `string` | — | Applied to the outer container. |
+| `style` | `CSSProperties` | — | Merged onto the outer container. |
+
+The banner is a `role="status"` live region. It is intentionally a status message, not a full alert dialog (see [Roadmap](#roadmap)).
+
+### `useDraftBanner(options)`
+
+Headless banner state. `options`: `{ savedAt: Date | null; autoHideMs?: number; locale?: string }`.
+
+**Returns** `{ visible: boolean; dismiss: () => void; relativeTime: string | null }`. `relativeTime` is `null` until after mount (SSR-safe) and whenever `savedAt` is `null`.
+
+### `useFormDraftRHF(form, options)` — `use-form-draft/rhf`
+
+React Hook Form adapter. `form` is a `UseFormReturn<T>`. `options` takes every `useFormDraft` option **except** `disabled`, plus a **required** `key`. It supplies `state` and `hydrate` automatically and disables writes while `formState.isSubmitting` is true (pass `disabled` to override). Returns the same `UseFormDraftReturn`.
+
+### `DraftPayload<T>`
+
+The exported shape of what's stored in `localStorage`: `{ version: number; savedAt: string; hadFile: boolean; state: T }` (`savedAt` is an ISO string on disk; the hook hands you a `Date`).
+
+## Behaviour & guarantees
+
+These are all covered by tests, not just intentions:
+
+- **`localStorage` unavailable** (private browsing, quota exceeded, disabled): every read/write is a silent no-op. The host form never crashes.
+- **Corrupted JSON** in storage: discarded as if absent.
+- **Hydrate throws:** the draft is deleted so a remount doesn't keep crashing on it.
+- **React 18 StrictMode:** the intentional double-mount does **not** write the initial state over a good draft.
+- **SSR (Next.js, Remix):** `useFormDraft` renders without touching `window`; `<DraftBanner>` returns `null` on the server; `useDraftBanner` returns `relativeTime: null` until after mount — no hydration mismatch.
+- **Rapid input:** writes are debounced.
+- **Identity-only re-renders:** if `state` is a new object each render but its persistable JSON is unchanged (the RHF `watch()` pattern), nothing is written. Writes fire only when the JSON actually differs.
+- **Non-serialisable state** (`BigInt`, circular refs, throwing `toJSON`): that write is skipped silently.
+
+## Limitations (the v0.1 contract)
+
+Known and deliberate for this version — call them out so you don't get surprised:
+
+- **The `key` must be stable for the component's lifetime.** Changing it while mounted has two failure modes: (1) the new key's existing draft is **not** restored (the restore effect runs once, on mount); (2) a pending debounced write for the old key still lands on the old key. If your key depends on a route param or entity id, unmount + remount the component instead — e.g. `<Form key={id} />` so React swaps the instance. Native key-change handling is planned for v0.2.
+- **Same-key concurrency is last-write-wins.** Two components mounted with the same `key` at once will race. The typical pattern — one form open per key — is safe.
+- **No cross-tab / cross-instance coordination** yet. Editing the same draft in two tabs is last-write-wins.
+- **`localStorage` only.** No `sessionStorage` or IndexedDB adapter yet.
+- **The `exclude` type caveat** described [above](#excluding-sensitive-fields).
+
+## Roadmap
+
+Not in v0.1, planned:
+
+- Cross-tab / cross-instance coordination via `BroadcastChannel` or the `storage` event.
+- Native `key`-change handling.
+- `sessionStorage` and IndexedDB storage adapters (large drafts, file metadata, rich text).
+- Precisely-typed `exclude` (`Omit<T, ExcludedKeys>` in the hydrate signature).
+- Banner: focus management and ARIA alert escalation.
+- Optional encryption at rest.
+
+## How it compares
+
+An honest sketch — feature columns and last-release dates were checked against `npm view <pkg>` and each package's README at the time of writing. Pick the one that fits; none is universally right.
+
+| Package | Form-lib-agnostic | Bundled recovery UI | Server autosave | Storage |
+|---|:-:|:-:|:-:|---|
+| **use-form-draft** | ✅ | ✅ banner + headless hook | ❌ | localStorage |
+| `react-hook-form-persist` | ❌ RHF only | ❌ | ❌ | local / session |
+| `react-hook-form-autosave` | ❌ RHF only | ❌ | ✅ | server |
+| `@ryanflorence/persist-form` | ✅ vanilla HTML form | ❌ | ❌ | sessionStorage |
+| `@zippers/savior` | ✅ framework-free | ❌ | ❌ | local / session |
+| `form-snapshots` | ✅ | ❌ snapshot history | ❌ | IndexedDB (Dexie) |
+
+**When to pick something else:** if you only use React Hook Form and don't need a banner, `react-hook-form-persist` does the persistence job in fewer bytes. If you want autosave to a *server* (not a local draft), use `react-hook-form-autosave`. If you need snapshot history with undo, look at `form-snapshots`. If you're working with vanilla DOM forms (no framework), `@zippers/savior` is purpose-built for that.
+
+`use-form-draft` targets the *closed-the-tab-and-came-back* recovery flow specifically, with a React-idiomatic API, a bundled banner UX, and support for any form library.
+
+## FAQ
+
+**Where is the draft stored?** In `window.localStorage`, under the `key` you pass, as a JSON [`DraftPayload`](#draftpayloadt). Nothing leaves the browser.
+
+**Is it safe for passwords / card numbers?** Use [`exclude`](#excluding-sensitive-fields) to strip them before they're written. There's no encryption at rest yet (it's on the [roadmap](#roadmap)) — don't rely on `localStorage` for secrets you wouldn't want readable by other scripts on the origin.
+
+**Does it autosave to my backend?** No — it's a *local* draft, not server autosave. For server autosave, see [`react-hook-form-autosave`](#how-it-compares).
+
+**Does it work outside React?** No. The core is a React hook.
+
+**Does it support uncontrolled inputs?** It persists whatever state you hand it. For React Hook Form (largely uncontrolled), use the [adapter](#react-hook-form), which reads via `watch()`.
+
+**Will it write my empty initial form over a saved draft?** No — that's one of the specific cases it's built and tested to avoid.
+
+## Local development
+
+This is the supported way to run it until the first npm release.
 
 ```bash
 git clone https://github.com/Maaz046/use-form-draft.git
 cd use-form-draft
 npm install
-npm --prefix examples install
-npm run demo
+
+npm test          # run the test suite (vitest)
+npm run typecheck # tsc --noEmit
+npm run build     # bundle ESM + CJS + .d.ts with tsup
 ```
 
-Opens a live demo at `http://localhost:5173` with three working examples (vanilla useState, React Hook Form, Formik). Type into any form, close the tab, reopen — the draft is restored.
+To use it in another local project before it's published, build it and install the folder (or `npm pack` it and install the resulting tarball):
 
-## What's NOT in v0.1 (planned)
+```bash
+npm run build
+npm install /absolute/path/to/use-form-draft
+```
 
-- Cross-tab / cross-instance coordination via `BroadcastChannel` or the `storage` event
-- IndexedDB storage adapter for large drafts (file metadata, rich text)
-- `sessionStorage` adapter
-- Banner: focus management, ARIA alert escalation (the v0.1 banner is `role="status"` with `aria-hidden` decorative glyphs — accessible enough for status messaging, not a full alert dialog)
-- Encryption at rest
+## Contributing
 
-PRs welcome.
+Issues and PRs are welcome. Please run `npm run typecheck && npm test && npm run build` before opening a PR — CI runs all three across Node 18, 20, and 22.
 
 ## License
 
-MIT
+[MIT](./LICENSE)
