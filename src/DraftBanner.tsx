@@ -1,18 +1,5 @@
 import { type CSSProperties, type ReactNode, useEffect, useState } from 'react';
-
-function relativeTime(date: Date, now: number, locale: string): string {
-  const rtf = new Intl.RelativeTimeFormat(locale, { numeric: 'auto' });
-  const diffMs = date.getTime() - now;
-  const diffSec = Math.round(diffMs / 1000);
-  const diffMin = Math.round(diffMs / 60_000);
-  const diffHr = Math.round(diffMs / 3_600_000);
-  const diffDay = Math.round(diffMs / 86_400_000);
-
-  if (Math.abs(diffMin) < 1) return rtf.format(diffSec, 'second');
-  if (Math.abs(diffHr) < 1) return rtf.format(diffMin, 'minute');
-  if (Math.abs(diffDay) < 1) return rtf.format(diffHr, 'hour');
-  return rtf.format(diffDay, 'day');
-}
+import { relativeTime } from './relativeTime';
 
 export interface DraftBannerProps {
   /** From `useFormDraft().savedAt`. The banner does not render while this is null. */

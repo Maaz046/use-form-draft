@@ -1,6 +1,7 @@
 export { useFormDraft } from './useFormDraft';
 export type {
   DraftPayload,
+  DraftStorage,
   UseFormDraftOptions,
   UseFormDraftReturn,
 } from './useFormDraft';

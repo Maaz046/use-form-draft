@@ -1,4 +1,5 @@
 import { useCallback, useEffect, useState } from 'react';
+import { relativeTime } from './relativeTime';
 
 export interface UseDraftBannerOptions {
   /** When the restored draft was last saved. Drives the relative-time label and triggers re-show on change. */
@@ -20,20 +21,6 @@ export interface UseDraftBannerReturn {
   dismiss: () => void;
   /** Human-readable relative time, e.g. "3 hours ago" or null if savedAt is null. */
   relativeTime: string | null;
-}
-
-function formatRelative(date: Date, now: number, locale: string): string {
-  const rtf = new Intl.RelativeTimeFormat(locale, { numeric: 'auto' });
-  const diffMs = date.getTime() - now;
-  const diffSec = Math.round(diffMs / 1000);
-  const diffMin = Math.round(diffMs / 60_000);
-  const diffHr = Math.round(diffMs / 3_600_000);
-  const diffDay = Math.round(diffMs / 86_400_000);
-
-  if (Math.abs(diffMin) < 1) return rtf.format(diffSec, 'second');
-  if (Math.abs(diffHr) < 1) return rtf.format(diffMin, 'minute');
-  if (Math.abs(diffDay) < 1) return rtf.format(diffHr, 'hour');
-  return rtf.format(diffDay, 'day');
 }
 
 /**
@@ -71,7 +58,7 @@ export function useDraftBanner(options: UseDraftBannerOptions): UseDraftBannerRe
 
   const dismiss = useCallback(() => setVisible(false), []);
 
-  const relativeTime = isClient && savedAt ? formatRelative(savedAt, Date.now(), locale) : null;
+  const label = isClient && savedAt ? relativeTime(savedAt, Date.now(), locale) : null;
 
-  return { visible, dismiss, relativeTime };
+  return { visible, dismiss, relativeTime: label };
 }

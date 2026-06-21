@@ -1,7 +1,25 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
 
-const hasWindow = (): boolean =>
-  typeof window !== 'undefined' && typeof window.localStorage !== 'undefined';
+/**
+ * Minimal synchronous storage interface. The Web Storage API
+ * (`window.localStorage` / `window.sessionStorage`) satisfies it as-is, and
+ * you can supply your own adapter (in-memory, encrypted, namespaced, …) as
+ * long as it stays synchronous.
+ */
+export interface DraftStorage {
+  getItem(key: string): string | null;
+  setItem(key: string, value: string): void;
+  removeItem(key: string): void;
+}
+
+/** Resolve the storage backend: an explicit adapter, else localStorage, else null (SSR). */
+function resolveStorage(custom?: DraftStorage): DraftStorage | null {
+  if (custom) return custom;
+  if (typeof window !== 'undefined' && typeof window.localStorage !== 'undefined') {
+    return window.localStorage;
+  }
+  return null;
+}
 
 export interface DraftPayload<T> {
   version: number;
@@ -28,6 +46,21 @@ export interface UseFormDraftOptions<T> {
   exclude?: ReadonlyArray<keyof T>;
   /** Debounce window in ms for writes. Default 400. */
   debounceMs?: number;
+  /**
+   * Where to persist. Defaults to `window.localStorage`. Pass `window.sessionStorage` for
+   * tab-scoped drafts, or any object implementing {@link DraftStorage}. Must be synchronous —
+   * async stores (IndexedDB) aren't supported by this interface yet.
+   */
+  storage?: DraftStorage;
+  /**
+   * Keep this instance in sync with edits made in other tabs of the same origin. When true, a
+   * draft saved in another tab is restored into this one via the `storage` event. Default false.
+   *
+   * Only meaningful with `localStorage` (the default) — the `storage` event does not fire for
+   * `sessionStorage` (tab-scoped) or for custom adapters. Syncing is last-write-wins, so a remote
+   * save can overwrite what the user is currently editing here; opt in deliberately.
+   */
+  crossTab?: boolean;
 }
 
 export interface UseFormDraftReturn {
@@ -41,10 +74,15 @@ export interface UseFormDraftReturn {
   clear: () => void;
 }
 
-function safeGet<T>(key: string, ttlDays: number, version: number): DraftPayload<T> | null {
-  if (!hasWindow()) return null;
+function safeGet<T>(
+  storage: DraftStorage | null,
+  key: string,
+  ttlDays: number,
+  version: number,
+): DraftPayload<T> | null {
+  if (!storage) return null;
   try {
-    const raw = window.localStorage.getItem(key);
+    const raw = storage.getItem(key);
     if (!raw) return null;
     const p = JSON.parse(raw) as DraftPayload<T>;
     if (p.version !== version) return null;
@@ -56,8 +94,14 @@ function safeGet<T>(key: string, ttlDays: number, version: number): DraftPayload
   }
 }
 
-function safeSet<T>(key: string, state: T, hadFile: boolean, version: number): void {
-  if (!hasWindow()) return;
+function safeSet<T>(
+  storage: DraftStorage | null,
+  key: string,
+  state: T,
+  hadFile: boolean,
+  version: number,
+): void {
+  if (!storage) return;
   try {
     const p: DraftPayload<T> = {
       version,
@@ -65,16 +109,16 @@ function safeSet<T>(key: string, state: T, hadFile: boolean, version: number): v
       hadFile,
       state,
     };
-    window.localStorage.setItem(key, JSON.stringify(p));
+    storage.setItem(key, JSON.stringify(p));
   } catch {
     /* quota exceeded / private browsing / disabled */
   }
 }
 
-function safeDel(key: string): void {
-  if (!hasWindow()) return;
+function safeDel(storage: DraftStorage | null, key: string): void {
+  if (!storage) return;
   try {
-    window.localStorage.removeItem(key);
+    storage.removeItem(key);
   } catch {
     /* ignore */
   }
@@ -111,20 +155,22 @@ function safeStringify(payload: unknown): string | null {
 }
 
 /**
- * Auto-saves form state to localStorage with a debounced write, and restores it on mount.
+ * Auto-saves form state to a synchronous store (localStorage by default) with a debounced write,
+ * and restores it on mount.
  *
  * @param key      Storage key. **Must be stable for the component's lifetime in v0.1.** Changing
  *                 the key while mounted has two failure modes: (1) the new key's existing draft
  *                 is NOT restored (the restore effect runs once on mount); (2) any pending
  *                 debounced write for the old key still writes to the old key. If you need a key
  *                 that depends on a route param or entity id, unmount + remount the component
- *                 with the new key. Key-change handling is planned for v0.2.
+ *                 with the new key. Key-change handling is planned for a later release.
  *                 Two components mounting with the same key concurrently will race; last write
- *                 wins. Cross-instance coordination is on the v0.1.1 roadmap.
+ *                 wins. For cross-tab coordination, see the `crossTab` option.
  * @param state    The form state to persist. Re-runs the write check whenever this changes.
  *                 Writes only fire when the persisted JSON actually differs from the last write —
  *                 parent re-renders with unchanged values are no-ops.
- * @param hydrate  Called once on mount if a valid draft is found. Wire it to your form's setter.
+ * @param hydrate  Called once on mount if a valid draft is found (and again on cross-tab updates
+ *                 when `crossTab` is enabled). Wire it to your form's setter.
  * @param options  See {@link UseFormDraftOptions}.
  */
 export function useFormDraft<T>(
@@ -140,6 +186,9 @@ export function useFormDraft<T>(
   const version = options?.version ?? 1;
   const exclude = options?.exclude;
   const debounceMs = options?.debounceMs ?? 400;
+  const crossTab = options?.crossTab ?? false;
+
+  const storage = resolveStorage(options?.storage);
 
   const [restored, setRestored] = useState(false);
   const [savedAt, setSavedAt] = useState<Date | null>(null);
@@ -149,6 +198,13 @@ export function useFormDraft<T>(
   useEffect(() => {
     hydrateRef.current = hydrate;
   });
+
+  // Keep the resolved storage and read-time options reachable from event-listener
+  // closures (the cross-tab effect) without re-subscribing on every render.
+  const storageRef = useRef(storage);
+  storageRef.current = storage;
+  const readOptsRef = useRef({ ttlDays, version, exclude });
+  readOptsRef.current = { ttlDays, version, exclude };
 
   // Seed once with the initial persistable JSON — so the very first effect run
   // (and StrictMode's double-mount) sees "no change vs initial" and writes nothing.
@@ -161,26 +217,59 @@ export function useFormDraft<T>(
     lastWrittenJsonRef.current = safeStringify(stripExcluded(state, exclude));
   }
 
+  // Apply a freshly-read payload into hook state + the host form. Shared by the
+  // mount-restore effect and the cross-tab listener.
+  const applyDraft = useCallback((draft: DraftPayload<T>) => {
+    hydrateRef.current(draft.state);
+    setRestored(true);
+    setSavedAt(new Date(draft.savedAt));
+    setHadFile(draft.hadFile);
+    // Seed lastWritten so the post-hydrate render doesn't re-persist what we just restored.
+    lastWrittenJsonRef.current = safeStringify(
+      stripExcluded(draft.state, readOptsRef.current.exclude),
+    );
+  }, []);
+
   // Restore on mount
   useEffect(() => {
     if (skipRestore) return;
-    const draft = safeGet<T>(key, ttlDays, version);
+    const draft = safeGet<T>(storage, key, ttlDays, version);
     if (!draft) return;
     try {
-      hydrateRef.current(draft.state);
-      setRestored(true);
-      setSavedAt(new Date(draft.savedAt));
-      setHadFile(draft.hadFile);
-      // Seed lastWritten so the post-hydrate render doesn't re-persist what we just restored.
-      // safeStringify keeps a non-serializable restored payload from crashing the effect —
-      // it shouldn't happen in practice (the payload was serializable enough to be stored),
-      // but the contract is "never throw from render/effect into the host app".
-      lastWrittenJsonRef.current = safeStringify(stripExcluded(draft.state, exclude));
+      applyDraft(draft);
     } catch {
-      safeDel(key);
+      safeDel(storage, key);
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
+
+  // Cross-tab sync: another tab saving (or clearing) this key fires a `storage`
+  // event here. We re-read through safeGet so version/ttl validation still applies.
+  useEffect(() => {
+    if (!crossTab || typeof window === 'undefined') return;
+    const onStorage = (e: StorageEvent) => {
+      if (e.key !== key) return;
+      const { ttlDays: ttl, version: ver } = readOptsRef.current;
+      if (e.newValue === null) {
+        // Another tab cleared the draft. Don't clobber what the user is typing here;
+        // just drop our restored badge so stale "restored N ago" UI goes away.
+        setRestored(false);
+        setSavedAt(null);
+        setHadFile(false);
+        return;
+      }
+      const draft = safeGet<T>(storageRef.current, key, ttl, ver);
+      if (!draft) return;
+      try {
+        applyDraft(draft);
+      } catch {
+        safeDel(storageRef.current, key);
+      }
+    };
+    window.addEventListener('storage', onStorage);
+    return () => window.removeEventListener('storage', onStorage);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [crossTab, key]);
 
   const timerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
@@ -196,7 +285,7 @@ export function useFormDraft<T>(
 
     if (timerRef.current) clearTimeout(timerRef.current);
     timerRef.current = setTimeout(() => {
-      safeSet(key, payload, hasFile, version);
+      safeSet(storage, key, payload, hasFile, version);
       lastWrittenJsonRef.current = json;
     }, debounceMs);
 
@@ -207,7 +296,7 @@ export function useFormDraft<T>(
   }, [state, disabled]);
 
   const clear = useCallback(() => {
-    safeDel(key);
+    safeDel(storageRef.current, key);
     setRestored(false);
     setSavedAt(null);
     setHadFile(false);

@@ -406,4 +406,109 @@ describe('useFormDraft', () => {
       act(() => { result.current.clear(); });
     }).not.toThrow();
   });
+
+  // ---- storage adapter ----
+
+  it('persists to a custom storage adapter instead of localStorage', () => {
+    const store = new Map<string, string>();
+    const adapter = {
+      getItem: (k: string) => store.get(k) ?? null,
+      setItem: (k: string, v: string) => { store.set(k, v); },
+      removeItem: (k: string) => { store.delete(k); },
+    };
+    const hydrate = vi.fn();
+    const { rerender } = renderHook(
+      ({ state }: { state: { n: string } }) =>
+        useFormDraft('adapter:key', state, hydrate, { storage: adapter }),
+      { initialProps: { state: { n: 'a' } } },
+    );
+    rerender({ state: { n: 'b' } });
+    act(() => { vi.advanceTimersByTime(400); });
+    expect(localStorage.getItem('adapter:key')).toBeNull();
+    expect(JSON.parse(store.get('adapter:key')!).state).toEqual({ n: 'b' });
+  });
+
+  it('restores from a sessionStorage adapter', () => {
+    sessionStorage.setItem('sess:key', JSON.stringify({
+      version: 1, savedAt: new Date().toISOString(), hadFile: false, state: { n: 'from-session' },
+    }));
+    const hydrate = vi.fn();
+    renderHook(() =>
+      useFormDraft('sess:key', { n: '' }, hydrate, { storage: sessionStorage }),
+    );
+    expect(hydrate).toHaveBeenCalledWith({ n: 'from-session' });
+    sessionStorage.clear();
+  });
+
+  // ---- cross-tab sync ----
+
+  it('crossTab: hydrates when another tab saves the same key', () => {
+    const hydrate = vi.fn();
+    renderHook(() => useFormDraft('tab:key', { n: '' }, hydrate, { crossTab: true }));
+    const payload = JSON.stringify({
+      version: 1, savedAt: new Date().toISOString(), hadFile: false, state: { n: 'other-tab' },
+    });
+    act(() => {
+      localStorage.setItem('tab:key', payload);
+      window.dispatchEvent(new StorageEvent('storage', {
+        key: 'tab:key', newValue: payload, storageArea: localStorage,
+      }));
+    });
+    expect(hydrate).toHaveBeenCalledWith({ n: 'other-tab' });
+  });
+
+  it('does not react to storage events when crossTab is off (default)', () => {
+    const hydrate = vi.fn();
+    renderHook(() => useFormDraft('tab:off', { n: '' }, hydrate));
+    const payload = JSON.stringify({
+      version: 1, savedAt: new Date().toISOString(), hadFile: false, state: { n: 'other-tab' },
+    });
+    act(() => {
+      localStorage.setItem('tab:off', payload);
+      window.dispatchEvent(new StorageEvent('storage', {
+        key: 'tab:off', newValue: payload, storageArea: localStorage,
+      }));
+    });
+    expect(hydrate).not.toHaveBeenCalled();
+  });
+
+  it('crossTab: ignores storage events for other keys', () => {
+    const hydrate = vi.fn();
+    renderHook(() => useFormDraft('tab:mine', { n: '' }, hydrate, { crossTab: true }));
+    act(() => {
+      window.dispatchEvent(new StorageEvent('storage', {
+        key: 'tab:other', newValue: 'whatever', storageArea: localStorage,
+      }));
+    });
+    expect(hydrate).not.toHaveBeenCalled();
+  });
+
+  it('crossTab: drops the restored badge when another tab clears the draft', () => {
+    localStorage.setItem('tab:clr', JSON.stringify({
+      version: 1, savedAt: new Date().toISOString(), hadFile: false, state: { n: 'x' },
+    }));
+    const hydrate = vi.fn();
+    const { result } = renderHook(() =>
+      useFormDraft('tab:clr', { n: '' }, hydrate, { crossTab: true }),
+    );
+    expect(result.current.restored).toBe(true);
+    act(() => {
+      localStorage.removeItem('tab:clr');
+      window.dispatchEvent(new StorageEvent('storage', {
+        key: 'tab:clr', newValue: null, storageArea: localStorage,
+      }));
+    });
+    expect(result.current.restored).toBe(false);
+    expect(result.current.savedAt).toBeNull();
+  });
+
+  it('removes the storage listener on unmount when crossTab is on', () => {
+    const remove = vi.spyOn(window, 'removeEventListener');
+    const hydrate = vi.fn();
+    const { unmount } = renderHook(() =>
+      useFormDraft('tab:cleanup', { n: '' }, hydrate, { crossTab: true }),
+    );
+    unmount();
+    expect(remove).toHaveBeenCalledWith('storage', expect.any(Function));
+  });
 });

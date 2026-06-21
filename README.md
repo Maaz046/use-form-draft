@@ -2,19 +2,14 @@
 
 > Auto-save React form drafts to `localStorage` and restore them on mount — with an optional recovery banner. Works with plain `useState`, React Hook Form, Formik, or anything that has a value and a setter.
 
+[![npm version](https://img.shields.io/npm/v/use-form-draft?color=cb3837)](https://www.npmjs.com/package/use-form-draft)
+[![npm downloads](https://img.shields.io/npm/dm/use-form-draft?color=cb3837)](https://www.npmjs.com/package/use-form-draft)
 ![license](https://img.shields.io/badge/license-MIT-3b82f6)
-![size](https://img.shields.io/badge/min%2Bgzip-~2%20kB-22c55e)
-![deps](https://img.shields.io/badge/runtime%20deps-0-22c55e)
+![min+gzip](https://img.shields.io/badge/min%2Bgzip-~2%20kB-22c55e)
+![runtime deps](https://img.shields.io/badge/runtime%20deps-0-22c55e)
 ![types](https://img.shields.io/badge/types-included-3b82f6)
 
 Long forms get abandoned mid-fill — a switched tab, a browser crash, an accidental refresh. `use-form-draft` is the small, tested helper that quietly persists what the user has typed and offers it back when they return.
-
----
-
-> [!IMPORTANT]
-> **Status — pre-release (`v0.1.0`).** The library is feature-complete and covered by a substantial test suite, but it is **not yet published to npm**. Until the first release is cut, install it [from source](#local-development). The `npm install` line below is how you'll add it once it's published. There are no other distribution channels yet — if you find it on a registry under this name before an official release, it isn't from this project.
-
----
 
 ## Contents
 
@@ -30,6 +25,8 @@ Long forms get abandoned mid-fill — a switched tab, a browser crash, an accide
   - [Excluding sensitive fields](#excluding-sensitive-fields)
   - [Schema versioning](#schema-versioning)
   - [Expiry (TTL)](#expiry-ttl)
+  - [Cross-tab sync](#cross-tab-sync)
+  - [Custom storage backends](#custom-storage-backends)
   - [Theming the banner](#theming-the-banner)
   - [Internationalisation](#internationalisation)
 - [API reference](#api-reference)
@@ -66,11 +63,11 @@ Every team eventually writes its own "debounce the form state into `localStorage
 - **Sensitive-field exclusion** — strip passwords / CVVs before anything touches storage.
 - **Recovery UI, your choice** — a themeable `<DraftBanner>`, a headless `useDraftBanner` hook, or nothing at all.
 - **SSR- and StrictMode-safe** — verified by `react-dom/server` and double-mount tests, not just guards.
+- **Pluggable storage** — `localStorage` (default), `sessionStorage`, or your own synchronous adapter.
+- **Cross-tab aware** (opt-in) — a draft saved in one tab can restore into another.
 - **Fully typed**, ESM + CJS, with bundled `.d.ts`.
 
 ## Install
-
-> Not on npm yet — see [Status](#use-form-draft) above. Once published:
 
 ```bash
 npm install use-form-draft
@@ -81,8 +78,6 @@ yarn add use-form-draft
 ```
 
 `react >= 17` is a peer dependency. `react-hook-form >= 7` is an **optional** peer — only needed if you import the `use-form-draft/rhf` entry.
-
-Until the first release, install [from source](#local-development).
 
 ## Quick start (plain `useState`)
 
@@ -257,6 +252,41 @@ Drafts older than `ttlDays` (default **30**) are treated as absent on read and c
 useFormDraft('draft:tender', state, hydrate, { ttlDays: 7 });
 ```
 
+### Cross-tab sync
+
+By default each tab keeps its own copy. Pass `crossTab: true` and a draft saved in one tab is restored into any other tab editing the same key — handy when a user duplicates a long form into a second tab:
+
+```tsx
+const draft = useFormDraft('draft:tender:create', form, setForm, { crossTab: true });
+```
+
+It listens for the browser's `storage` event, so it only applies to `localStorage` (the default backend). Syncing is **last-write-wins** — a save in another tab can overwrite what's being typed here — so opt in deliberately. When another tab *clears* the draft, this instance drops its "restored" badge but doesn't wipe what you're currently editing.
+
+### Custom storage backends
+
+The hook persists through a tiny synchronous interface, so you can point it anywhere. `window.sessionStorage` already satisfies it (tab-scoped drafts that vanish when the tab closes):
+
+```tsx
+useFormDraft('draft:tender', state, hydrate, { storage: window.sessionStorage });
+```
+
+Or supply your own adapter — namespaced, encrypted, in-memory for tests, etc:
+
+```tsx
+import type { DraftStorage } from 'use-form-draft';
+
+const memory = new Map<string, string>();
+const inMemory: DraftStorage = {
+  getItem: (k) => memory.get(k) ?? null,
+  setItem: (k, v) => void memory.set(k, v),
+  removeItem: (k) => void memory.delete(k),
+};
+
+useFormDraft('draft:tender', state, hydrate, { storage: inMemory });
+```
+
+The interface is intentionally synchronous; async stores like IndexedDB aren't supported yet (see [Roadmap](#roadmap)).
+
 ### Theming the banner
 
 `<DraftBanner>` is styled with inline defaults that read from CSS custom properties. Set them anywhere in your CSS to retheme every banner at once:
@@ -301,6 +331,8 @@ Pass `locale` (drives `Intl.RelativeTimeFormat`) and `messages` to fully localis
 | `options.exclude` | `ReadonlyArray<keyof T>` | Keys stripped before persisting (passwords, CVVs). |
 | `options.hasFile` | `boolean` | Stored as a flag so the banner can prompt re-attach. File *content* is never persisted. Default `false`. |
 | `options.debounceMs` | `number` | Write debounce window. Default `400`. |
+| `options.storage` | `DraftStorage` | Where to persist. Default `window.localStorage`. Pass `window.sessionStorage` or a custom synchronous adapter. |
+| `options.crossTab` | `boolean` | Restore a draft saved in another tab into this one (localStorage only, last-write-wins). Default `false`. |
 
 **Returns** `UseFormDraftReturn`:
 
@@ -361,17 +393,16 @@ Known and deliberate for this version — call them out so you don't get surpris
 
 - **The `key` must be stable for the component's lifetime.** Changing it while mounted has two failure modes: (1) the new key's existing draft is **not** restored (the restore effect runs once, on mount); (2) a pending debounced write for the old key still lands on the old key. If your key depends on a route param or entity id, unmount + remount the component instead — e.g. `<Form key={id} />` so React swaps the instance. Native key-change handling is planned for v0.2.
 - **Same-key concurrency is last-write-wins.** Two components mounted with the same `key` at once will race. The typical pattern — one form open per key — is safe.
-- **No cross-tab / cross-instance coordination** yet. Editing the same draft in two tabs is last-write-wins.
-- **`localStorage` only.** No `sessionStorage` or IndexedDB adapter yet.
+- **Cross-tab sync is opt-in and last-write-wins.** With `crossTab: true`, a save in another tab can overwrite what's being edited here — there's no automatic merge or conflict resolution.
+- **Synchronous storage only.** `localStorage` (default), `sessionStorage`, and custom sync adapters work via `storage`; async stores like IndexedDB aren't supported by the interface yet.
 - **The `exclude` type caveat** described [above](#excluding-sensitive-fields).
 
 ## Roadmap
 
-Not in v0.1, planned:
+Not done yet, planned:
 
-- Cross-tab / cross-instance coordination via `BroadcastChannel` or the `storage` event.
 - Native `key`-change handling.
-- `sessionStorage` and IndexedDB storage adapters (large drafts, file metadata, rich text).
+- An **async** storage-adapter interface for IndexedDB (large drafts, file metadata, rich text). Synchronous backends — `localStorage`, `sessionStorage`, custom adapters — already work via `storage`.
 - Precisely-typed `exclude` (`Omit<T, ExcludedKeys>` in the hydrate signature).
 - Banner: focus management and ARIA alert escalation.
 - Optional encryption at rest.
@@ -409,8 +440,6 @@ An honest sketch — feature columns and last-release dates were checked against
 
 ## Local development
 
-This is the supported way to run it until the first npm release.
-
 ```bash
 git clone https://github.com/Maaz046/use-form-draft.git
 cd use-form-draft
@@ -421,7 +450,7 @@ npm run typecheck # tsc --noEmit
 npm run build     # bundle ESM + CJS + .d.ts with tsup
 ```
 
-To use it in another local project before it's published, build it and install the folder (or `npm pack` it and install the resulting tarball):
+To test an unreleased change against another local project, build it and install the folder (or `npm pack` it and install the resulting tarball):
 
 ```bash
 npm run build

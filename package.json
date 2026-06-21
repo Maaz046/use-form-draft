@@ -1,6 +1,6 @@
 {
   "name": "use-form-draft",
-  "version": "0.1.0",
+  "version": "0.2.0",
   "description": "Library-agnostic React hook for auto-saving form drafts to localStorage, with restore-on-mount and a themable recovery banner.",
   "type": "module",
   "main": "./dist/index.cjs",
