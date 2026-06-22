@@ -5,6 +5,7 @@ export default defineConfig({
     index: 'src/index.ts',
     rhf: 'src/rhf.ts',
     formik: 'src/formik.ts',
+    tanstack: 'src/tanstack.ts',
   },
   format: ['esm', 'cjs'],
   dts: true,
@@ -12,5 +13,5 @@ export default defineConfig({
   clean: true,
   treeshake: true,
   minify: false,
-  external: ['react', 'react-dom', 'react-hook-form', 'formik'],
+  external: ['react', 'react-dom', 'react-hook-form', 'formik', '@tanstack/react-form'],
 });

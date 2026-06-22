@@ -3,6 +3,13 @@
 All notable changes to `use-form-draft` are documented here. This project follows
 [Semantic Versioning](https://semver.org/) and the [Keep a Changelog](https://keepachangelog.com/) format.
 
+## [0.4.0]
+
+### Added
+- **TanStack Form adapter** under `use-form-draft/tanstack` (`useFormDraftTanStack`). Reads values from
+  the form store and hydrates via `form.reset(draft, { keepDefaultValues: true })` so `useForm`'s
+  per-render `update()` can't clobber a restore. `@tanstack/react-form` is an optional peer.
+
 ## [0.3.0]
 
 ### Added
@@ -39,6 +46,7 @@ Initial release.
 - React 18 StrictMode and SSR safety, verified by tests.
 - Dual ESM/CJS build with bundled type declarations; CI on Node 18, 20, and 22.
 
+[0.4.0]: https://github.com/Maaz046/use-form-draft/releases/tag/v0.4.0
 [0.3.0]: https://github.com/Maaz046/use-form-draft/releases/tag/v0.3.0
 [0.2.0]: https://github.com/Maaz046/use-form-draft/releases/tag/v0.2.0
 [0.1.0]: https://github.com/Maaz046/use-form-draft/releases/tag/v0.1.0

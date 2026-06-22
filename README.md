@@ -24,6 +24,7 @@ Long forms get abandoned mid-fill — a switched tab, a browser crash, an accide
 - [Recipes](#recipes)
   - [React Hook Form](#react-hook-form)
   - [Formik](#formik)
+  - [TanStack Form](#tanstack-form)
   - [Headless banner](#headless-banner)
   - [Excluding sensitive fields](#excluding-sensitive-fields)
   - [Schema versioning](#schema-versioning)
@@ -59,7 +60,7 @@ Every team eventually writes its own "debounce the form state into `localStorage
 ## Features
 
 - **Library-agnostic.** Anything with a value and a setter: `useState`, React Hook Form, Formik, or your own reducer.
-- **Tiny.** ~2 kB min+gzip core, **zero runtime dependencies** beyond React. The React Hook Form and Formik adapters ship as separate `use-form-draft/rhf` and `use-form-draft/formik` entries, so you only pay for the one you import.
+- **Tiny.** ~2 kB min+gzip core, **zero runtime dependencies** beyond React. The React Hook Form, Formik, and TanStack Form adapters ship as separate `use-form-draft/rhf`, `use-form-draft/formik`, and `use-form-draft/tanstack` entries, so you only pay for the one you import.
 - **Debounced writes**, with a no-op when the persisted JSON hasn't actually changed.
 - **Restore on mount** with a `savedAt` timestamp for "restored 3 minutes ago" messaging.
 - **TTL expiry** — drafts older than N days are silently discarded on read.
@@ -81,7 +82,7 @@ pnpm add use-form-draft
 yarn add use-form-draft
 ```
 
-`react >= 17` is a peer dependency. `react-hook-form >= 7` and `formik >= 2` are **optional** peers — only needed if you import the `use-form-draft/rhf` or `use-form-draft/formik` entry respectively.
+`react >= 17` is a peer dependency. `react-hook-form >= 7`, `formik >= 2`, and `@tanstack/react-form >= 1` are **optional** peers — each only needed if you import the matching `use-form-draft/rhf`, `use-form-draft/formik`, or `use-form-draft/tanstack` entry.
 
 ## Quick start (plain `useState`)
 
@@ -204,6 +205,33 @@ function NewTenderForm() {
 ```
 
 Prefer wiring it by hand? The core hook is form-library-agnostic — pass `formik.values` as the state and `(saved) => formik.setValues(saved)` as the hydrate, with `disabled: formik.isSubmitting`. The adapter just packages that.
+
+### TanStack Form
+
+Use the adapter from `use-form-draft/tanstack`. It reads the form's values from its store and hydrates restored drafts via `form.reset(…, { keepDefaultValues: true })`. Pass the form-data type explicitly to type the draft:
+
+```tsx
+import { useForm } from '@tanstack/react-form';
+import { DraftBanner } from 'use-form-draft';
+import { useFormDraftTanStack } from 'use-form-draft/tanstack';
+
+function NewTenderForm() {
+  const form = useForm({ defaultValues: { title: '', qty: 0 } });
+  const draft = useFormDraftTanStack<TenderInput>(form, { key: 'draft:tender:create' });
+
+  return (
+    <form onSubmit={(e) => { e.preventDefault(); form.handleSubmit(); }}>
+      <DraftBanner savedAt={draft.savedAt} onDiscard={draft.clear} />
+      <form.Field name="title">
+        {(field) => (
+          <input value={field.state.value} onChange={(e) => field.handleChange(e.target.value)} />
+        )}
+      </form.Field>
+      <button type="submit">Submit</button>
+    </form>
+  );
+}
+```
 
 ### Headless banner
 
@@ -394,6 +422,10 @@ React Hook Form adapter. `form` is a `UseFormReturn<T>`. `options` takes every `
 ### `useFormDraftFormik(formik, options)` — `use-form-draft/formik`
 
 Formik adapter. `formik` is the bag returned by `useFormik` / `<Formik>` (a `FormikProps<T>`). `options` takes every `useFormDraft` option **except** `disabled`, plus a **required** `key`. It persists `formik.values`, hydrates via `formik.setValues`, and disables writes while `formik.isSubmitting` is true (pass `disabled` to override). Returns the same `UseFormDraftReturn`.
+
+### `useFormDraftTanStack<T>(form, options)` — `use-form-draft/tanstack`
+
+TanStack Form adapter. `form` is the instance from `useForm`. Pass `T` explicitly to type the draft (the form's data type isn't inferred from the instance). `options` takes every `useFormDraft` option **except** `disabled`, plus a **required** `key`. It reads values from the form store, hydrates via `form.reset(draft, { keepDefaultValues: true })`, and disables writes while the form is submitting (pass `disabled` to override). Returns the same `UseFormDraftReturn`.
 
 ### `DraftStorage`
 

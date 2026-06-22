@@ -1,6 +1,6 @@
 {
   "name": "use-form-draft",
-  "version": "0.3.0",
+  "version": "0.4.0",
   "description": "Library-agnostic React hook for auto-saving form drafts to localStorage, with restore-on-mount and a themable recovery banner.",
   "type": "module",
   "main": "./dist/index.cjs",
@@ -36,6 +36,16 @@
         "types": "./dist/formik.d.cts",
         "default": "./dist/formik.cjs"
       }
+    },
+    "./tanstack": {
+      "import": {
+        "types": "./dist/tanstack.d.ts",
+        "default": "./dist/tanstack.js"
+      },
+      "require": {
+        "types": "./dist/tanstack.d.cts",
+        "default": "./dist/tanstack.cjs"
+      }
     }
   },
   "files": [
@@ -63,6 +73,7 @@
     "persistence",
     "react-hook-form",
     "formik",
+    "tanstack-form",
     "cross-tab",
     "recovery",
     "use-form-draft"
@@ -78,9 +89,10 @@
   },
   "homepage": "https://github.com/Maaz046/use-form-draft#readme",
   "peerDependencies": {
+    "@tanstack/react-form": ">=1",
+    "formik": ">=2",
     "react": ">=17",
-    "react-hook-form": ">=7",
-    "formik": ">=2"
+    "react-hook-form": ">=7"
   },
   "peerDependenciesMeta": {
     "react-hook-form": {
@@ -88,9 +100,13 @@
     },
     "formik": {
       "optional": true
+    },
+    "@tanstack/react-form": {
+      "optional": true
     }
   },
   "devDependencies": {
+    "@tanstack/react-form": "^1.33.0",
     "@testing-library/react": "^16.0.1",
     "@types/react": "^18.3.12",
     "@types/react-dom": "^18.3.1",
