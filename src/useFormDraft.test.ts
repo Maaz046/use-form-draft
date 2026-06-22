@@ -407,6 +407,27 @@ describe('useFormDraft', () => {
     }).not.toThrow();
   });
 
+  it('does not throw when accessing window.localStorage itself throws (sandboxed iframe / disabled by policy)', () => {
+    // A sandboxed iframe or a "block site data" policy throws SecurityError on the
+    // property getter, before any method runs. typeof does not suppress it.
+    const spy = vi.spyOn(window, 'localStorage', 'get').mockImplementation(() => {
+      throw new Error('SecurityError: access denied');
+    });
+    const hydrate = vi.fn();
+    expect(() => {
+      const { result, rerender } = renderHook(
+        ({ state }: { state: { name: string } }) =>
+          useFormDraft('iframe:key', state, hydrate),
+        { initialProps: { state: { name: 'a' } } },
+      );
+      rerender({ state: { name: 'b' } });
+      act(() => { vi.advanceTimersByTime(400); });
+      act(() => { result.current.clear(); });
+    }).not.toThrow();
+    expect(hydrate).not.toHaveBeenCalled();
+    spy.mockRestore();
+  });
+
   // ---- storage adapter ----
 
   it('persists to a custom storage adapter instead of localStorage', () => {

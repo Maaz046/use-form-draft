@@ -15,8 +15,16 @@ export interface DraftStorage {
 /** Resolve the storage backend: an explicit adapter, else localStorage, else null (SSR). */
 function resolveStorage(custom?: DraftStorage): DraftStorage | null {
   if (custom) return custom;
-  if (typeof window !== 'undefined' && typeof window.localStorage !== 'undefined') {
-    return window.localStorage;
+  try {
+    // Accessing `window.localStorage` can itself throw — a sandboxed iframe
+    // (no allow-same-origin) or a "block site data" policy throws SecurityError
+    // on the property getter, before any method is called. `typeof` does NOT
+    // suppress that, so the access has to live inside the try.
+    if (typeof window !== 'undefined' && window.localStorage) {
+      return window.localStorage;
+    }
+  } catch {
+    /* storage blocked by sandbox / policy — treat as unavailable */
   }
   return null;
 }

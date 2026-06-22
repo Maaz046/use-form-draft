@@ -3,6 +3,14 @@
 All notable changes to `use-form-draft` are documented here. This project follows
 [Semantic Versioning](https://semver.org/) and the [Keep a Changelog](https://keepachangelog.com/) format.
 
+## [0.4.1]
+
+### Fixed
+- `resolveStorage` no longer throws when **accessing** `window.localStorage` itself throws — a sandboxed
+  iframe (no `allow-same-origin`) or a "block site data" policy throws `SecurityError` on the property
+  getter, which `typeof` doesn't suppress. The probe is now wrapped, so the hook degrades to a no-op
+  instead of crashing the host form. Covered by a regression test.
+
 ## [0.4.0]
 
 ### Added
@@ -46,6 +54,7 @@ Initial release.
 - React 18 StrictMode and SSR safety, verified by tests.
 - Dual ESM/CJS build with bundled type declarations; CI on Node 18, 20, and 22.
 
+[0.4.1]: https://github.com/Maaz046/use-form-draft/releases/tag/v0.4.1
 [0.4.0]: https://github.com/Maaz046/use-form-draft/releases/tag/v0.4.0
 [0.3.0]: https://github.com/Maaz046/use-form-draft/releases/tag/v0.3.0
 [0.2.0]: https://github.com/Maaz046/use-form-draft/releases/tag/v0.2.0
