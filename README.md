@@ -30,6 +30,7 @@ Long forms get abandoned mid-fill — a switched tab, a browser crash, an accide
   - [Expiry (TTL)](#expiry-ttl)
   - [Cross-tab sync](#cross-tab-sync)
   - [Custom storage backends](#custom-storage-backends)
+  - [Next.js & SSR](#nextjs--ssr)
   - [Theming the banner](#theming-the-banner)
   - [Internationalisation](#internationalisation)
 - [API reference](#api-reference)
@@ -287,6 +288,25 @@ useFormDraft('draft:tender', state, hydrate, { storage: inMemory });
 ```
 
 The interface is intentionally synchronous; async stores like IndexedDB aren't supported yet (see [Roadmap](#roadmap)).
+
+### Next.js & SSR
+
+`use-form-draft` reads `localStorage`, so it only runs on the client. In the Next.js App Router (or any React Server Components setup), mark the component that holds the form as a Client Component:
+
+```tsx
+'use client';
+
+import { useState } from 'react';
+import { useFormDraft, DraftBanner } from 'use-form-draft';
+
+export function NewTenderForm() {
+  const [form, setForm] = useState({ title: '', notes: '' });
+  const draft = useFormDraft('draft:tender', form, setForm);
+  // …render your fields
+}
+```
+
+No extra configuration is needed. The hook never touches `window` during render, `DraftBanner` renders `null` on the server, and `useDraftBanner` returns `relativeTime: null` until after hydration — so there's no SSR/client mismatch. The same applies to Remix and other SSR frameworks.
 
 ### Theming the banner
 
